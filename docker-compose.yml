@@ -1,0 +1,36 @@
+services:
+  user-service:
+    build:
+      context: .
+      dockerfile: dockerfile.user_service
+    container_name: user-service-compose
+    ports:
+      - "8001:8001"
+    volumes: # Tùy chọn: mount code để thay đổi được phản ánh mà không cần build lại (cho development)
+      - ./user_service:/app/user_service
+    networks:
+      - ocr_network
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: dockerfile.apigw_service
+    container_name: api-gateway-compose
+    ports:
+      - "8000:8000"
+    volumes: # Tùy chọn: mount code (cho development)
+      - ./api_gateway:/app/api_gateway
+    environment:
+      # USER_SERVICE_URL sẽ được pydantic-settings trong api_gateway/config.py đọc
+      # Nó sẽ trỏ đến service 'user-service' trên port 8001 trong cùng Docker network
+      - USER_SERVICE_URL=http://user-service-compose:8001
+    depends_on:
+      - user-service # Đảm bảo user-service khởi động trước api-gateway
+    networks:
+      - ocr_network
+    restart: unless-stopped
+
+networks:
+  ocr_network:
+    driver: bridge
