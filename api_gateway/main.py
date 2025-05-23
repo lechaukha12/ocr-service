@@ -4,8 +4,7 @@ import httpx
 import asyncio 
 from typing import List, Optional
 
-# Sửa import tương đối thành tuyệt đối
-from config import settings # Thay vì from .config import settings
+from config import settings
 
 app = FastAPI(title="API Gateway")
 
@@ -30,8 +29,13 @@ async def forward_request(
     if headers_to_forward:
         client_headers.update(headers_to_forward)
 
-    if not files_data and request.headers.get("content-type"):
+    if not files_data and request.headers.get("content-type") and not form_data: # Điều chỉnh để form_data không bị ghi đè content-type
         client_headers["content-type"] = request.headers.get("content-type")
+    elif form_data and not files_data : # Để httpx tự đặt content-type cho form
+        pass
+    elif json_data:
+         client_headers["content-type"] = "application/json"
+
 
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         try:
@@ -47,14 +51,16 @@ async def forward_request(
                 elif data_bytes:
                     response = await client.post(target_url, content=data_bytes, params=params, headers=client_headers)
                 else:
-                    response = await client.post(target_url, params=params, headers=client_headers)
+                    content_body = await request.body() # Đọc body nếu không có loại data cụ thể
+                    response = await client.post(target_url, content=content_body, params=params, headers=client_headers)
             elif method.upper() == "PUT":
                 if json_data: 
                     response = await client.put(target_url, json=json_data, params=params, headers=client_headers)
                 elif data_bytes: 
                      response = await client.put(target_url, content=data_bytes, params=params, headers=client_headers)
                 else:
-                    response = await client.put(target_url, params=params, headers=client_headers)
+                    content_body = await request.body()
+                    response = await client.put(target_url, content=content_body, params=params, headers=client_headers)
             elif method.upper() == "DELETE":
                 response = await client.delete(target_url, params=params, headers=client_headers)
             else:
@@ -83,6 +89,7 @@ async def forward_request(
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Error connecting to service at {target_url}: {exc}")
 
 # --- User Service Routes ---
+# (Các routes hiện có của User Service)
 @app.post("/auth/users/", tags=["User Service"])
 async def register_user(request: Request):
     json_data = await request.json()
@@ -106,6 +113,7 @@ async def get_current_user_details(request: Request):
     return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
 
 # --- Storage Service Routes ---
+# (Các routes hiện có của Storage Service)
 @app.post("/storage/upload/file/", tags=["Storage Service"])
 async def proxy_upload_file_storage(request: Request):
     body_bytes = await request.body()
@@ -126,7 +134,9 @@ async def proxy_get_file_storage(filename: str, request: Request):
     target_url = f"{settings.STORAGE_SERVICE_URL}/files/{filename}"
     return await forward_request(request, target_url, "GET")
 
+
 # --- Admin Portal Backend Service Routes ---
+# (Các routes hiện có của Admin Portal Backend Service)
 @app.get("/admin/users/", tags=["Admin Portal Backend Service"])
 async def proxy_admin_get_users(request: Request, skip: int = 0, limit: int = 100):
     target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/users/"
@@ -140,6 +150,7 @@ async def proxy_admin_get_users(request: Request, skip: int = 0, limit: int = 10
     return await forward_request(request, target_url, "GET", params=params, headers_to_forward=headers_to_fwd)
 
 # --- Generic OCR Service Routes ---
+# (Các routes hiện có của Generic OCR Service)
 @app.post("/ocr/image/", tags=["OCR Service"])
 async def proxy_ocr_image(
     request: Request,
@@ -176,3 +187,26 @@ async def proxy_ocr_languages(request: Request):
     if auth_header:
         headers_to_fwd["Authorization"] = auth_header
     return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
+
+
+# --- eKYC Information Extraction Service Routes --- # <-- KHỐI MỚI
+@app.post("/ekyc/extract_info/", tags=["eKYC Information Extraction Service"])
+async def proxy_ekyc_extract_info(request: Request):
+    target_url = f"{settings.EKYC_INFO_EXTRACTION_SERVICE_URL}/extract_info/"
+    
+    auth_header = request.headers.get("Authorization") # Chuyển tiếp token nếu dịch vụ này cần
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+
+    # Dịch vụ trích xuất thông tin nhận JSON body
+    json_data = await request.json()
+    
+    return await forward_request(
+        request,
+        target_url,
+        "POST",
+        json_data=json_data,
+        headers_to_forward=headers_to_fwd
+    )
+

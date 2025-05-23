@@ -59,6 +59,19 @@ services:
       - ocr_network
     restart: unless-stopped
 
+  ekyc-info-extraction-service: # <-- KHỐI MỚI
+    build:
+      context: ./ekyc_information_extraction_service
+      dockerfile: Dockerfile
+    container_name: ekyc-info-extraction-service-compose
+    ports:
+      - "8005:8005" # Service này sẽ chạy trên cổng 8005
+    volumes:
+      - ./ekyc_information_extraction_service:/app
+    networks:
+      - ocr_network
+    restart: unless-stopped
+
   api-gateway:
     build:
       context: ./api_gateway
@@ -73,11 +86,13 @@ services:
       - STORAGE_SERVICE_URL=http://storage-service-compose:8003
       - ADMIN_PORTAL_BACKEND_SERVICE_URL=http://admin-portal-backend-compose:8002
       - GENERIC_OCR_SERVICE_URL=http://generic-ocr-service-compose:8004
+      - EKYC_INFO_EXTRACTION_SERVICE_URL=http://ekyc-info-extraction-service-compose:8005 # <-- THÊM DÒNG NÀY
     depends_on:
       - user-service
       - storage-service
       - generic-ocr-service
       - admin-portal-backend
+      - ekyc-info-extraction-service # <-- THÊM DEPENDENCY NÀY
     networks:
       - ocr_network
     restart: unless-stopped
