@@ -3,9 +3,11 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     SECRET_KEY: str = "Abcd1234"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 # 30 minutes
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    ADMIN_USERNAME_FOR_TESTING: str = "admin_ekyc"
 
     class Config:
-        env_file = ".env" # Optional: Load from .env file if it exists
+        env_file = ".env"
 
 settings = Settings()
