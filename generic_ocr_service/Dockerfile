@@ -18,17 +18,23 @@ RUN apt-get update && apt-get install -y \
 
 # Kiểm tra Tesseract và các ngôn ngữ đã cài đặt từ command line (trong quá trình build)
 RUN echo "--- Tesseract Version (from command line during build) ---" && \
-    tesseract --version && \
-    echo "--- Tesseract List Available Languages (from command line during build) ---" && \
-    tesseract --list-langs && \
-    echo "--- Listing contents of /usr/share/tesseract-ocr/4.00/tessdata/ (old path attempt) ---" && \
-    ls -l /usr/share/tesseract-ocr/4.00/tessdata/ || echo "Path /usr/share/tesseract-ocr/4.00/tessdata not found or empty" && \
-    echo "--- Listing contents of /usr/share/tessdata/ (new path attempt for Tesseract 5.x) ---" && \
-    ls -l /usr/share/tessdata/ || echo "Path /usr/share/tessdata not found or empty"
+    tesseract --version
 
-# Thiết lập biến môi trường TESSDATA_PREFIX
-# Thử đường dẫn phổ biến cho Tesseract 5.x
-ENV TESSDATA_PREFIX=/usr/share/tessdata
+RUN echo "--- Tesseract List Available Languages (from command line during build) ---" && \
+    tesseract --list-langs
+
+RUN echo "--- Listing contents of /usr/share/tesseract-ocr/4.00/tessdata/ (old path attempt) ---" && \
+    (ls -l /usr/share/tesseract-ocr/4.00/tessdata/ || echo "Path /usr/share/tesseract-ocr/4.00/tessdata not found or empty")
+
+RUN echo "--- Listing contents of /usr/share/tessdata/ (previous path attempt) ---" && \
+    (ls -l /usr/share/tessdata/ || echo "Path /usr/share/tessdata not found or empty")
+
+RUN echo "--- Listing contents of /usr/share/tesseract-ocr/5/tessdata/ (confirmed path) ---" && \
+    (ls -l /usr/share/tesseract-ocr/5/tessdata/ || echo "Path /usr/share/tesseract-ocr/5/tessdata not found or empty")
+
+
+# Thiết lập biến môi trường TESSDATA_PREFIX dựa trên output của tesseract --list-langs
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 
 # Sao chép file requirements.txt
 COPY requirements.txt /app/requirements.txt
@@ -43,7 +49,7 @@ COPY . /app/
 EXPOSE 8004
 
 # Lệnh để chạy ứng dụng khi container khởi động
-# Vẫn sử dụng check_tesseract.py để debug runtime
+# Bây giờ check_tesseract.py sẽ sử dụng TESSDATA_PREFIX đúng
 CMD python /app/check_tesseract.py && \
     echo "--- Attempting to run main.py directly (full version) ---" && \
     python /app/main.py && \

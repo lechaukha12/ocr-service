@@ -1,0 +1,152 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [generic-ocr-service internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.37kB done
+#1 DONE 0.0s
+
+#2 [generic-ocr-service auth] library/python:pull token for registry-1.docker.io
+#2 DONE 0.0s
+
+#3 [generic-ocr-service internal] load metadata for docker.io/library/python:3.10-slim
+#3 DONE 2.3s
+
+#4 [generic-ocr-service internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [generic-ocr-service  1/11] FROM docker.io/library/python:3.10-slim@sha256:49454d2bf78a48f217eb25ecbcb4b5face313fea6a6e82706465a6990303ada2
+#5 DONE 0.0s
+
+#6 [generic-ocr-service  2/11] WORKDIR /app
+#6 CACHED
+
+#7 [generic-ocr-service  3/11] RUN apt-get update && apt-get install -y     build-essential     tesseract-ocr     tesseract-ocr-eng     tesseract-ocr-vie     tesseract-ocr-osd     libjpeg-dev     zlib1g-dev     libpng-dev     libtiff-dev     libgl1-mesa-glx     && apt-get clean && rm -rf /var/lib/apt/lists/*
+#7 CACHED
+
+#8 [generic-ocr-service  4/11] RUN echo "--- Tesseract Version (from command line during build) ---" &&     tesseract --version
+#8 CACHED
+
+#9 [generic-ocr-service  5/11] RUN echo "--- Tesseract List Available Languages (from command line during build) ---" &&     tesseract --list-langs
+#9 CACHED
+
+#10 [generic-ocr-service  6/11] RUN echo "--- Listing contents of /usr/share/tesseract-ocr/4.00/tessdata/ (old path attempt) ---" &&     (ls -l /usr/share/tesseract-ocr/4.00/tessdata/ || echo "Path /usr/share/tesseract-ocr/4.00/tessdata not found or empty")
+#10 CACHED
+
+#11 [generic-ocr-service internal] load build context
+#11 transferring context: 2.85kB done
+#11 DONE 0.0s
+
+#12 [generic-ocr-service  7/11] RUN echo "--- Listing contents of /usr/share/tessdata/ (previous path attempt) ---" &&     (ls -l /usr/share/tessdata/ || echo "Path /usr/share/tessdata not found or empty")
+#12 0.093 --- Listing contents of /usr/share/tessdata/ (previous path attempt) ---
+#12 0.094 ls: cannot access '/usr/share/tessdata/': No such file or directory
+#12 0.094 Path /usr/share/tessdata not found or empty
+#12 DONE 0.1s
+
+#13 [generic-ocr-service  8/11] RUN echo "--- Listing contents of /usr/share/tesseract-ocr/5/tessdata/ (confirmed path) ---" &&     (ls -l /usr/share/tesseract-ocr/5/tessdata/ || echo "Path /usr/share/tesseract-ocr/5/tessdata not found or empty")
+#13 0.110 --- Listing contents of /usr/share/tesseract-ocr/5/tessdata/ (confirmed path) ---
+#13 0.111 total 14868
+#13 0.111 drwxr-xr-x 2 root root     4096 May 23 07:08 configs
+#13 0.111 -rw-r--r-- 1 root root  4113088 Oct 30  2019 eng.traineddata
+#13 0.111 -rw-r--r-- 1 root root 10562727 Oct 30  2019 osd.traineddata
+#13 0.111 -rw-r--r-- 1 root root      572 Jan 11  2023 pdf.ttf
+#13 0.111 drwxr-xr-x 2 root root     4096 May 23 07:08 tessconfigs
+#13 0.111 -rw-r--r-- 1 root root   531275 Oct 30  2019 vie.traineddata
+#13 DONE 0.1s
+
+#14 [generic-ocr-service  9/11] COPY requirements.txt /app/requirements.txt
+#14 DONE 0.0s
+
+#15 [generic-ocr-service 10/11] RUN pip install --no-cache-dir --trusted-host pypi.python.org -r /app/requirements.txt
+#15 1.016 Collecting fastapi
+#15 1.185   Downloading fastapi-0.115.12-py3-none-any.whl (95 kB)
+#15 1.238      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 95.2/95.2 kB 1.8 MB/s eta 0:00:00
+#15 1.300 Collecting uvicorn[standard]
+#15 1.333   Downloading uvicorn-0.34.2-py3-none-any.whl (62 kB)
+#15 1.339      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.5/62.5 kB 19.7 MB/s eta 0:00:00
+#15 1.380 Collecting python-multipart
+#15 1.415   Downloading python_multipart-0.0.20-py3-none-any.whl (24 kB)
+#15 1.462 Collecting pytesseract
+#15 1.496   Downloading pytesseract-0.3.13-py3-none-any.whl (14 kB)
+#15 1.743 Collecting Pillow
+#15 1.777   Downloading pillow-11.2.1-cp310-cp310-manylinux_2_28_aarch64.whl (4.5 MB)
+#15 2.022      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 18.5 MB/s eta 0:00:00
+#15 2.117 Collecting opencv-python-headless
+#15 2.151   Downloading opencv_python_headless-4.11.0.86-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (29.5 MB)
+#15 3.248      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 29.5/29.5 MB 45.1 MB/s eta 0:00:00
+#15 3.308 Collecting pydantic-settings
+#15 3.341   Downloading pydantic_settings-2.9.1-py3-none-any.whl (44 kB)
+#15 3.344      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.4/44.4 kB 81.2 MB/s eta 0:00:00
+#15 3.399 Collecting typing-extensions>=4.8.0
+#15 3.434   Downloading typing_extensions-4.13.2-py3-none-any.whl (45 kB)
+#15 3.436      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.8/45.8 kB 180.8 MB/s eta 0:00:00
+#15 3.492 Collecting starlette<0.47.0,>=0.40.0
+#15 3.526   Downloading starlette-0.46.2-py3-none-any.whl (72 kB)
+#15 3.529      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 72.0/72.0 kB 82.3 MB/s eta 0:00:00
+#15 3.687 Collecting pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4
+#15 3.726   Downloading pydantic-2.11.5-py3-none-any.whl (444 kB)
+#15 3.742      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 444.2/444.2 kB 30.1 MB/s eta 0:00:00
+#15 3.794 Collecting click>=7.0
+#15 3.827   Downloading click-8.2.1-py3-none-any.whl (102 kB)
+#15 3.829      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 102.2/102.2 kB 238.0 MB/s eta 0:00:00
+#15 3.867 Collecting h11>=0.8
+#15 3.900   Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+#15 3.996 Collecting watchfiles>=0.13
+#15 4.032   Downloading watchfiles-1.0.5-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (455 kB)
+#15 4.041      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 455.0/455.0 kB 55.8 MB/s eta 0:00:00
+#15 4.107 Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0
+#15 4.140   Downloading uvloop-0.21.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (3.8 MB)
+#15 4.220      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.8/3.8 MB 48.8 MB/s eta 0:00:00
+#15 4.262 Collecting python-dotenv>=0.13
+#15 4.294   Downloading python_dotenv-1.1.0-py3-none-any.whl (20 kB)
+#15 4.357 Collecting pyyaml>=5.1
+#15 4.389   Downloading PyYAML-6.0.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (718 kB)
+#15 4.403      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 718.5/718.5 kB 57.7 MB/s eta 0:00:00
+#15 4.528 Collecting websockets>=10.4
+#15 4.559   Downloading websockets-15.0.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (182 kB)
+#15 4.565      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 182.3/182.3 kB 52.9 MB/s eta 0:00:00
+#15 4.621 Collecting httptools>=0.6.3
+#15 4.654   Downloading httptools-0.6.4-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (443 kB)
+#15 4.663      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 443.1/443.1 kB 63.5 MB/s eta 0:00:00
+#15 4.708 Collecting packaging>=21.3
+#15 4.741   Downloading packaging-25.0-py3-none-any.whl (66 kB)
+#15 4.742      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 66.5/66.5 kB 415.2 MB/s eta 0:00:00
+#15 4.966 Collecting numpy>=1.19.3
+#15 5.001   Downloading numpy-2.2.6-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (14.3 MB)
+#15 5.323      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.3/14.3 MB 47.5 MB/s eta 0:00:00
+#15 5.393 Collecting typing-inspection>=0.4.0
+#15 5.424   Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+#15 6.045 Collecting pydantic-core==2.33.2
+#15 6.081   Downloading pydantic_core-2.33.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.9 MB)
+#15 6.129      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 40.2 MB/s eta 0:00:00
+#15 6.169 Collecting annotated-types>=0.6.0
+#15 6.206   Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+#15 6.271 Collecting anyio<5,>=3.6.2
+#15 6.317   Downloading anyio-4.9.0-py3-none-any.whl (100 kB)
+#15 6.319      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100.9/100.9 kB 448.1 MB/s eta 0:00:00
+#15 6.388 Collecting exceptiongroup>=1.0.2
+#15 6.423   Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)
+#15 6.463 Collecting idna>=2.8
+#15 6.498   Downloading idna-3.10-py3-none-any.whl (70 kB)
+#15 6.499      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 70.4/70.4 kB 529.1 MB/s eta 0:00:00
+#15 6.551 Collecting sniffio>=1.1
+#15 6.583   Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+#15 6.674 Installing collected packages: websockets, uvloop, typing-extensions, sniffio, pyyaml, python-multipart, python-dotenv, Pillow, packaging, numpy, idna, httptools, h11, click, annotated-types, uvicorn, typing-inspection, pytesseract, pydantic-core, opencv-python-headless, exceptiongroup, pydantic, anyio, watchfiles, starlette, pydantic-settings, fastapi
+#15 8.403 Successfully installed Pillow-11.2.1 annotated-types-0.7.0 anyio-4.9.0 click-8.2.1 exceptiongroup-1.3.0 fastapi-0.115.12 h11-0.16.0 httptools-0.6.4 idna-3.10 numpy-2.2.6 opencv-python-headless-4.11.0.86 packaging-25.0 pydantic-2.11.5 pydantic-core-2.33.2 pydantic-settings-2.9.1 pytesseract-0.3.13 python-dotenv-1.1.0 python-multipart-0.0.20 pyyaml-6.0.2 sniffio-1.3.1 starlette-0.46.2 typing-extensions-4.13.2 typing-inspection-0.4.1 uvicorn-0.34.2 uvloop-0.21.0 watchfiles-1.0.5 websockets-15.0.1
+#15 8.403 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+#15 8.581 
+#15 8.581 [notice] A new release of pip is available: 23.0.1 -> 25.1.1
+#15 8.581 [notice] To update, run: pip install --upgrade pip
+#15 DONE 8.9s
+
+#16 [generic-ocr-service 11/11] COPY . /app/
+#16 DONE 0.0s
+
+#17 [generic-ocr-service] exporting to image
+#17 exporting layers
+#17 exporting layers 0.3s done
+#17 writing image sha256:f1cb22f3bc823343022ef22f38c3a5636be4e6b0172e5efb2568d7a3e22e625a done
+#17 naming to docker.io/library/ocr-service-generic-ocr-service done
+#17 DONE 0.3s
+
+#18 [generic-ocr-service] resolving provenance for metadata file
+#18 DONE 0.0s
