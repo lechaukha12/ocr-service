@@ -5,15 +5,60 @@ from PIL import Image
 import io
 import os
 from typing import Optional
+import cv2 # Thư viện OpenCV
+import numpy as np
 
 app = FastAPI(title="Generic OCR Service")
 
-# Chỉ định đường dẫn đến Tesseract executable.
-# Điều này quan trọng để pytesseract tìm thấy Tesseract trong môi trường container.
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
+def preprocess_image_for_ocr(image_bytes: bytes) -> Image.Image:
+    try:
+        # Đọc ảnh bằng OpenCV
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # 1. Chuyển sang ảnh xám
+        gray_img = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+
+        # 2. Áp dụng Gaussian Blur để giảm nhiễu nhẹ (tùy chọn, có thể điều chỉnh kernel size)
+        # blurred_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
+
+        # 3. Nhị phân hóa ảnh sử dụng Otsu's Binarization
+        # Điều này hiệu quả với ảnh có độ tương phản tốt giữa nền và chữ
+        _, binary_img = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # (Tùy chọn nâng cao hơn: Adaptive Thresholding nếu ảnh có điều kiện ánh sáng không đồng đều)
+        # adaptive_thresh_img = cv2.adaptiveThreshold(gray_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        # cv2.THRESH_BINARY, 11, 2)
+
+
+        # (Tùy chọn: Giảm nhiễu sau khi nhị phân hóa bằng morphological operations)
+        # kernel = np.ones((1,1),np.uint8)
+        # opening = cv2.morphologyEx(binary_img, cv2.MORPH_OPEN, kernel, iterations = 1)
+        # closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations = 1)
+
+
+        # Chuyển đổi ảnh OpenCV (NumPy array) đã xử lý trở lại đối tượng Image của Pillow
+        # Sử dụng ảnh đã nhị phân hóa:
+        processed_pil_img = Image.fromarray(binary_img)
+        # Hoặc nếu bạn thử các bước khác:
+        # processed_pil_img = Image.fromarray(gray_img) # Nếu chỉ muốn ảnh xám
+        # processed_pil_img = Image.fromarray(adaptive_thresh_img) # Nếu dùng adaptive threshold
+
+        return processed_pil_img
+    except Exception as e:
+        # print(f"Lỗi trong quá trình tiền xử lý ảnh: {e}")
+        # Nếu lỗi, trả về ảnh gốc chưa xử lý
+        return Image.open(io.BytesIO(image_bytes))
+
+
 @app.post("/ocr/image/", tags=["OCR"])
-async def ocr_image(file: UploadFile = File(...), lang: Optional[str] = Form("vie")): # Mặc định tiếng Việt (vie)
+async def ocr_image(
+    file: UploadFile = File(...), 
+    lang: Optional[str] = Form("vie"),
+    psm: Optional[str] = Form("6") # Thêm tham số PSM, mặc định là 6
+):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -22,50 +67,44 @@ async def ocr_image(file: UploadFile = File(...), lang: Optional[str] = Form("vi
 
     try:
         image_bytes = await file.read()
-        img = Image.open(io.BytesIO(image_bytes))
         
-        # Cấu hình Tesseract:
-        # -l {lang}: chọn ngôn ngữ.
+        # Tiền xử lý ảnh
+        processed_img_pil = preprocess_image_for_ocr(image_bytes)
+        
+        # Cấu hình Tesseract với PSM tùy chỉnh
         # --oem 3: Chế độ OCR Engine mặc định (LSTM).
-        # --psm 6: Chế độ Page Segmentation Mode - Assume a single uniform block of text.
-        # Bạn có thể thử các giá trị psm khác tùy theo loại ảnh (ví dụ psm 3, 4, 11, 13).
-        custom_config = f'-l {lang} --oem 3 --psm 6' 
-        text = pytesseract.image_to_string(img, config=custom_config)
+        custom_config = f'-l {lang} --oem 3 --psm {psm}' 
+        text = pytesseract.image_to_string(processed_img_pil, config=custom_config)
         
-        return JSONResponse(content={"filename": file.filename, "language": lang, "text": text.strip()})
+        return JSONResponse(content={"filename": file.filename, "language": lang, "psm_used": psm, "text": text.strip()})
 
-    except HTTPException as e: # Re-raise HTTPException để FastAPI xử lý đúng status code
+    except HTTPException as e:
         raise e
     except pytesseract.TesseractNotFoundError:
-        # print("Tesseract is not installed or not in your PATH, or tesseract_cmd is incorrect.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Tesseract OCR engine not found or tesseract_cmd is incorrect. Please check server configuration."
         )
     except Exception as e:
-        # print(f"Error during OCR processing: {type(e).__name__} - {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred during OCR processing: {str(e)}"
         )
     finally:
-        if file and not file.file.closed: # Đảm bảo file được đóng
+        if file and hasattr(file, 'file') and not file.file.closed:
              await file.close()
 
 @app.get("/ocr/languages/", tags=["OCR"])
 async def get_available_languages():
     try:
-        # Thử lấy danh sách ngôn ngữ. Nếu TESSDATA_PREFIX đúng, nó sẽ hoạt động.
         languages = pytesseract.get_languages(config='')
         return JSONResponse(content={"available_languages": languages})
     except pytesseract.TesseractNotFoundError:
-        # print("Tesseract is not installed or not in your PATH, or tesseract_cmd is incorrect.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Tesseract OCR engine not found or tesseract_cmd is incorrect. Please check server configuration."
         )
     except Exception as e:
-        # print(f"Could not fetch Tesseract languages: {type(e).__name__} - {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not fetch Tesseract languages: {str(e)}"
@@ -74,5 +113,3 @@ async def get_available_languages():
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
 async def health_check():
     return {"status": "healthy", "message": "Generic OCR Service is running!"}
-
-print("Full main.py for Generic OCR Service loaded by Python interpreter.")
