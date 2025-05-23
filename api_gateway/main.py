@@ -8,7 +8,7 @@ from config import settings
 
 app = FastAPI(title="API Gateway")
 
-DEFAULT_TIMEOUT = 20.0
+DEFAULT_TIMEOUT = 60.0 # Tăng thời gian chờ lên 60 giây
 
 async def forward_request(
     request: Request,
@@ -207,4 +207,3 @@ async def proxy_ekyc_extract_info(request: Request):
         json_data=json_data,
         headers_to_forward=headers_to_fwd
     )
-
