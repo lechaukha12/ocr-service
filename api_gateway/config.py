@@ -1,10 +1,11 @@
-# api_gateway/config.py
+# Trong ocr-service/api_gateway/config.py
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    USER_SERVICE_URL: str = "http://user-service:8001" # Sử dụng tên service và port của user_service
+    USER_SERVICE_URL: str = "http://user-service-compose:8001"
+    STORAGE_SERVICE_URL: str = "http://storage-service-compose:8003" # Thêm dòng này nếu chưa có
+    ADMIN_PORTAL_BACKEND_SERVICE_URL: str = "http://admin-portal-backend-compose:8002" # Thêm dòng này nếu chưa có
 
-    # ... các URL khác sau này
     class Config:
         env_file = ".env"
         extra = "ignore"
