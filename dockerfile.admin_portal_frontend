@@ -1,9 +1,15 @@
+# Sử dụng base image Nginx chính thức
 FROM nginx:alpine
 
-# Xóa file cấu hình Nginx mặc định
-RUN rm /etc/nginx/conf.d/default.conf
+# Sao chép file cấu hình Nginx tùy chỉnh của bạn vào thư mục conf.d với một tên khác
+COPY ./admin_portal_frontend/nginx.conf /etc/nginx/conf.d/my-app.conf
 
+# Sao chép nội dung của thư mục admin_portal_frontend (chứa index.html)
+# vào thư mục phục vụ web mặc định của Nginx
 COPY ./admin_portal_frontend/ /usr/share/nginx/html/
+
+# Kiểm tra cú pháp cấu hình Nginx
+RUN nginx -t
 
 # Mở cổng 80 mà Nginx lắng nghe mặc định
 EXPOSE 80
