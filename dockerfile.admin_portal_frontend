@@ -1,13 +1,20 @@
 FROM python:3.10-slim
 
-WORKDIR /app
+# Đặt WORKDIR trực tiếp vào thư mục chứa code của frontend
+WORKDIR /app/admin_portal_frontend
 
-COPY ./admin_portal_frontend/requirements.txt ./admin_portal_frontend/requirements.txt
+# Copy file requirements.txt vào WORKDIR hiện tại
+COPY ./admin_portal_frontend/requirements.txt ./requirements.txt
 
-RUN pip install --no-cache-dir --trusted-host pypi.python.org --trusted-host pypi.org --trusted-host files.pythonhosted.org -r ./admin_portal_frontend/requirements.txt
+# Cài đặt dependencies từ file requirements.txt trong WORKDIR
+RUN pip install --no-cache-dir --trusted-host pypi.python.org --trusted-host pypi.org --trusted-host files.pythonhosted.org -r ./requirements.txt
 
-COPY ./admin_portal_frontend/ /app/admin_portal_frontend/
+# Copy toàn bộ nội dung của thư mục admin_portal_frontend local vào WORKDIR hiện tại (tức là /app/admin_portal_frontend)
+COPY ./admin_portal_frontend/ ./
 
 EXPOSE 8080
 
-CMD ["uvicorn", "admin_portal_frontend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Chạy uvicorn từ WORKDIR hiện tại (/app/admin_portal_frontend)
+# Python sẽ tự động thêm WORKDIR vào sys.path
+# 'main:app' sẽ trỏ tới main.py trong WORKDIR và tìm đối tượng app
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -2,8 +2,13 @@ from pydantic_settings import BaseSettings
 import os
 
 class Settings(BaseSettings):
-    ADMIN_PORTAL_BACKEND_URL: str = "http://admin-portal-backend-compose:8002" # Địa chỉ của admin_portal_backend_service trong Docker network
+    ADMIN_PORTAL_BACKEND_URL: str = "http://admin-portal-backend-compose:8002"
     APP_TITLE: str = "Admin Portal OCR"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 # Thời gian hết hạn token truy cập mặc định là 30 phút
+
+    # Thêm các dòng này
+    SECRET_KEY: str = "your_very_secret_key_for_frontend" # Thay bằng một chuỗi bí mật thực sự
+    ALGORITHM: str = "HS256"
 
     # Sau này có thể thêm các cấu hình khác
     # STATIC_FILES_DIR: str = "static"
@@ -26,4 +31,3 @@ if not os.path.exists(TEMPLATES_DIR_CONFIG):
     os.makedirs(TEMPLATES_DIR_CONFIG)
 if not os.path.exists(STATIC_DIR_CONFIG):
     os.makedirs(STATIC_DIR_CONFIG)
-
