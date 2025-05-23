@@ -6,3 +6,5 @@ python-jose[cryptography]
 email-validator
 pydantic-settings
 python-multipart
+bcrypt
+sqlalchemy

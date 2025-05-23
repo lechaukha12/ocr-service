@@ -3,9 +3,12 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import List, Annotated
+from sqlalchemy.orm import Session
 
 from . import crud, models, utils, database
 from .config import settings
+
+database.create_db_tables()
 
 app = FastAPI(title="User Service")
 
@@ -16,12 +19,12 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15) # Mặc định 15 phút
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+async def get_current_user_db(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(database.get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -36,45 +39,41 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
     except JWTError:
         raise credentials_exception
     
-    user = crud.get_user_by_username(username=token_data.username)
+    user = crud.get_user_by_username(db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
 
 async def get_current_active_user(
-    current_user: Annotated[models.UserInDBBase, Depends(get_current_user)]
+    current_user: Annotated[models.UserDB, Depends(get_current_user_db)]
 ):
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
     return current_user
 
 @app.post("/users/", response_model=models.User, status_code=status.HTTP_201_CREATED, tags=["Users"])
-def create_new_user(user: models.UserCreate):
-    db_user_by_email = crud.get_user_by_email(email=user.email)
+def create_new_user(user: models.UserCreate, db: Session = Depends(database.get_db)):
+    db_user_by_email = crud.get_user_by_email(db, email=user.email)
     if db_user_by_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     
-    db_user_by_username = crud.get_user_by_username(username=user.username)
+    db_user_by_username = crud.get_user_by_username(db, username=user.username)
     if db_user_by_username:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
         
-    created_user = crud.create_user(user=user)
+    created_user_db = crud.create_user(db=db, user=user)
     
-    return models.User(
-        id=created_user.id,
-        username=created_user.username,
-        email=created_user.email,
-        is_active=created_user.is_active
-    )
+    return models.User.from_orm(created_user_db)
+
 
 @app.post("/token", response_model=models.Token, tags=["Authentication"])
 async def login_for_access_token(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    db: Session = Depends(database.get_db)
 ):
-    user = crud.get_user_by_username(username=form_data.username)
+    user = crud.get_user_by_username(db, username=form_data.username)
     if not user or not utils.verify_password(form_data.password, user.hashed_password):
-        # Thử đăng nhập bằng email nếu username không khớp
-        user_by_email = crud.get_user_by_email(email=form_data.username)
+        user_by_email = crud.get_user_by_email(db, email=form_data.username)
         if not user_by_email or not utils.verify_password(form_data.password, user_by_email.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -83,7 +82,7 @@ async def login_for_access_token(
             )
         user = user_by_email
 
-    if not user.is_active: # Kiểm tra sau khi đã xác định được user
+    if not user.is_active:
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -94,31 +93,18 @@ async def login_for_access_token(
 
 @app.get("/users/me/", response_model=models.User, tags=["Users"])
 async def read_users_me(
-    current_user: Annotated[models.UserInDBBase, Depends(get_current_active_user)]
+    current_user: Annotated[models.UserDB, Depends(get_current_active_user)]
 ):
-    return models.User(
-        id=current_user.id,
-        username=current_user.username,
-        email=current_user.email,
-        is_active=current_user.is_active
-    )
+    return models.User.from_orm(current_user)
 
-# Endpoint này chỉ mang tính minh họa, cần bảo mật đúng cách nếu dùng cho admin
-# @app.get("/users/", response_model=List[models.User], tags=["Admin"])
-# def read_all_users(skip: int = 0, limit: int = 100, 
-#                    # current_admin: Annotated[models.UserInDBBase, Depends(get_current_active_admin_user)] # Cần hàm xác thực admin
-#                   ):
-#     users_in_db = list(database.fake_users_db.values())[skip : skip + limit]
-#     users_response = []
-#     for user_data in users_in_db:
-#         users_response.append(models.User(
-#             id=user_data["id"],
-#             username=user_data["username"],
-#             email=user_data["email"],
-#             is_active=user_data["is_active"]
-#         ))
-#     return users_response
 
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+@app.get("/users/", response_model=List[models.User], tags=["Admin"])
+def read_all_users(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(database.get_db),
+    # current_admin: Annotated[models.UserDB, Depends(get_current_active_admin_user)] # Cần hàm xác thực admin
+):
+    users_db = crud.get_users(db, skip=skip, limit=limit)
+    return [models.User.from_orm(user_db) for user_db in users_db]
+

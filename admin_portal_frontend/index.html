@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - OCR Project</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #login-page {
+            background-image: url('https://placehold.co/1920x1080/334455/E0E0E0?text=TP.HCM+Landscape+Placeholder');
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="login-page" class="min-h-screen flex flex-col items-center justify-center bg-gray-200 p-4">
+        <div class="bg-white bg-opacity-90 p-8 sm:p-10 rounded-xl shadow-2xl w-full max-w-md">
+            <div class="text-center mb-8">
+                <img src="https://placehold.co/100x100/007bff/ffffff?text=LOGO" alt="Logo Dự án" class="mx-auto mb-4 h-16 w-auto rounded-full">
+                <h1 class="text-3xl font-bold text-gray-700">Admin Portal Đăng nhập</h1>
+                <p class="text-gray-500">Vui lòng đăng nhập để tiếp tục</p>
+            </div>
+            <form id="login-form">
+                <div class="mb-6">
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+                    <input type="text" id="username" name="username" required
+                           class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
+                           placeholder="admin">
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                    <input type="password" id="password" name="password" required
+                           class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out"
+                           placeholder="********">
+                </div>
+                <div id="login-error-message" class="mb-4 text-sm text-red-600 text-center hidden"></div>
+                <button type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                    Đăng nhập
+                </button>
+            </form>
+        </div>
+        <footer class="mt-8 text-center text-sm text-white text-opacity-80">
+            <p>&copy; <span id="current-year-login"></span> OCR Project Admin. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <div id="main-content-page" class="container mx-auto p-4 sm:p-6 lg:p-8 hidden">
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-bold text-gray-700">Admin Portal</h1>
+                <p class="text-lg text-gray-500">Danh sách người dùng hệ thống</p>
+            </div>
+            <button id="logout-button" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">
+                Đăng xuất
+            </button>
+        </header>
+
+        <div class="bg-white shadow-xl rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-700">Người dùng</h2>
+                 <button id="refresh-button" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">
+                    Làm mới
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-table-body" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                                <div id="loading-indicator">
+                                    <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <p class="mt-2 text-sm">Đang tải dữ liệu người dùng...</p>
+                                </div>
+                                <p id="error-message" class="text-red-500 hidden"></p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <footer class="mt-12 text-center text-sm text-gray-500">
+            <p>&copy; <span id="current-year-main"></span> OCR Project Admin. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script>
+        const loginPage = document.getElementById('login-page');
+        const mainContentPage = document.getElementById('main-content-page');
+        const loginForm = document.getElementById('login-form');
+        const loginErrorMessageElement = document.getElementById('login-error-message');
+        const logoutButton = document.getElementById('logout-button');
+
+        const userTableBody = document.getElementById('user-table-body');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorMessageElement = document.getElementById('error-message');
+        const refreshButton = document.getElementById('refresh-button');
+        const currentYearSpanLogin = document.getElementById('current-year-login');
+        const currentYearSpanMain = document.getElementById('current-year-main');
+
+        function checkLoginStatus() {
+            if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
+                showMainContentPage();
+                fetchUsers();
+            } else {
+                showLoginPage();
+            }
+        }
+
+        function showLoginPage() {
+            loginPage.classList.remove('hidden');
+            mainContentPage.classList.add('hidden');
+            if(currentYearSpanLogin) currentYearSpanLogin.textContent = new Date().getFullYear();
+        }
+
+        function showMainContentPage() {
+            loginPage.classList.add('hidden');
+            mainContentPage.classList.remove('hidden');
+            if(currentYearSpanMain) currentYearSpanMain.textContent = new Date().getFullYear();
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            loginErrorMessageElement.classList.add('hidden');
+            const username = loginForm.username.value;
+            const password = loginForm.password.value;
+
+            // *** Mô phỏng quá trình đăng nhập ***
+            // Trong thực tế, bạn sẽ gọi API đến admin_portal_backend_service để xác thực
+            if (username === "admin" && password === "password") { // Thay thế bằng logic xác thực thực tế
+                sessionStorage.setItem('isAdminLoggedIn', 'true'); // Lưu trạng thái đăng nhập
+                showMainContentPage();
+                fetchUsers(); // Tải danh sách người dùng sau khi đăng nhập thành công
+            } else {
+                loginErrorMessageElement.textContent = 'Tên đăng nhập hoặc mật khẩu không đúng.';
+                loginErrorMessageElement.classList.remove('hidden');
+            }
+        }
+
+        function handleLogout() {
+            sessionStorage.removeItem('isAdminLoggedIn');
+            showLoginPage();
+        }
+
+        async function fetchUsers() {
+            if (!loadingIndicator || !errorMessageElement || !userTableBody) return;
+
+            loadingIndicator.classList.remove('hidden');
+            errorMessageElement.classList.add('hidden');
+            userTableBody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                        <div id="loading-indicator-main">
+                            <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <p class="mt-2 text-sm">Đang tải dữ liệu người dùng...</p>
+                        </div>
+                    </td>
+                </tr>`;
+
+            try {
+                const response = await fetch('http://localhost:8002/admin/users/'); // Gọi đến admin_portal_backend_service
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: `Lỗi HTTP: ${response.status}` }));
+                    throw new Error(errorData.detail || `Lỗi HTTP: ${response.status}`);
+                }
+                const users = await response.json();
+                
+                const loadingIndicatorMain = document.getElementById('loading-indicator-main');
+                 if(loadingIndicatorMain && loadingIndicatorMain.parentElement && loadingIndicatorMain.parentElement.parentElement) {
+                     loadingIndicatorMain.parentElement.parentElement.remove();
+                } else if (loadingIndicator && loadingIndicator.parentElement && loadingIndicator.parentElement.parentElement) {
+                    // Fallback if the new ID isn't found for some reason
+                    loadingIndicator.parentElement.parentElement.remove();
+                }
+
+
+                userTableBody.innerHTML = ''; // Xóa indicator loading hoặc thông báo cũ
+
+                if (users.length === 0) {
+                    userTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                                Không có người dùng nào để hiển thị.
+                            </td>
+                        </tr>`;
+                } else {
+                    users.forEach(user => {
+                        const row = userTableBody.insertRow();
+                        row.className = 'hover:bg-gray-50 transition duration-150 ease-in-out';
+                        
+                        row.insertCell().outerHTML = `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.id}</td>`;
+                        row.insertCell().outerHTML = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.username}</td>`;
+                        row.insertCell().outerHTML = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.email}</td>`;
+                        
+                        const cellStatus = row.insertCell();
+                        cellStatus.className = 'px-6 py-4 whitespace-nowrap text-sm';
+                        const statusBadge = document.createElement('span');
+                        statusBadge.textContent = user.is_active ? 'Hoạt động' : 'Không hoạt động';
+                        statusBadge.className = `px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+                        cellStatus.appendChild(statusBadge);
+                    });
+                }
+
+            } catch (error) {
+                console.error('Lỗi khi tải người dùng:', error);
+                const loadingIndicatorMain = document.getElementById('loading-indicator-main');
+                if(loadingIndicatorMain && loadingIndicatorMain.parentElement && loadingIndicatorMain.parentElement.parentElement) {
+                     loadingIndicatorMain.parentElement.parentElement.remove();
+                } else if (loadingIndicator && loadingIndicator.parentElement && loadingIndicator.parentElement.parentElement) {
+                    loadingIndicator.parentElement.parentElement.remove();
+                }
+                userTableBody.innerHTML = ''; 
+                errorMessageElement.textContent = `Không thể tải dữ liệu người dùng: ${error.message}. Vui lòng đảm bảo service backend đang chạy ở port 8002.`;
+                errorMessageElement.classList.remove('hidden');
+            }
+        }
+
+        if(loginForm) loginForm.addEventListener('submit', handleLogin);
+        if(logoutButton) logoutButton.addEventListener('click', handleLogout);
+        if(refreshButton) refreshButton.addEventListener('click', fetchUsers);
+        
+        document.addEventListener('DOMContentLoaded', checkLoginStatus);
+    </script>
+</body>
+</html>
