@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ settings.APP_TITLE }} - Đăng nhập</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif; /* Tailwind default is usually fine, but explicitly setting */
+        }
+        .login-container {
+            min-height: 100vh;
+            background-color: #4a5568; /* bg-gray-700 */
+        }
+        .login-card {
+            background-color: white;
+            padding: 2rem; /* p-8 */
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
+            width: 100%;
+            max-width: 28rem; /* max-w-md */
+        }
+        .form-input {
+            border-radius: 0.375rem; /* rounded-md */
+            border: 1px solid #cbd5e0; /* border-gray-300 */
+            padding: 0.75rem 1rem; /* py-3 px-4 */
+            width: 100%;
+        }
+        .form-input:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            border-color: #6366f1; /* focus:border-indigo-500 */
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5); /* focus:ring-indigo-500 */
+        }
+        .submit-button {
+            background-color: #6366f1; /* bg-indigo-600 */
+            color: white;
+            font-weight: 600; /* font-semibold */
+            padding: 0.75rem 1rem; /* py-3 px-4 */
+            border-radius: 0.375rem; /* rounded-md */
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+        .submit-button:hover {
+            background-color: #4f46e5; /* hover:bg-indigo-700 */
+        }
+        .error-message {
+            background-color: #fee2e2; /* bg-red-100 */
+            border: 1px solid #f87171; /* border-red-400 */
+            color: #b91c1c; /* text-red-700 */
+            padding: 0.75rem 1rem; /* px-4 py-3 */
+            border-radius: 0.375rem; /* rounded */
+            margin-bottom: 1rem; /* mb-4 */
+        }
+    </style>
+</head>
+<body class="login-container flex items-center justify-center">
+    <div class="login-card">
+        <div class="text-center mb-8">
+            <i class="fas fa-key text-4xl text-indigo-600 mb-3"></i>
+            <h1 class="text-2xl font-bold text-gray-800">{{ settings.APP_TITLE }}</h1>
+            <p class="text-gray-600">Vui lòng đăng nhập để tiếp tục.</p>
+        </div>
+
+        {% if error %}
+        <div class="error-message" role="alert">
+            <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <form action="/login" method="post">
+            <div class="mb-4">
+                <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+                <input type="text" name="username" id="username" class="form-input" placeholder="admin" required>
+            </div>
+            <div class="mb-6">
+                <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                <input type="password" name="password" id="password" class="form-input" placeholder="••••••••" required>
+            </div>
+            <div>
+                <button type="submit" class="submit-button">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Đăng nhập
+                </button>
+            </div>
+        </form>
+        <p class="text-center text-sm text-gray-500 mt-8">
+            &copy; {{ settings.APP_TITLE }}. All rights reserved.
+        </p>
+    </div>
+</body>
+</html>

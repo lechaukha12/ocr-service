@@ -65,14 +65,17 @@ services:
   admin-portal-frontend:
     build:
       context: .
-      dockerfile: dockerfile.admin_portal_frontend # Sử dụng Dockerfile mới tạo
-    container_name: admin-portal-frontend-compose
+      dockerfile: dockerfile.admin_portal_frontend # Sử dụng Dockerfile mới cho Python/FastAPI frontend
+    container_name: admin-portal-frontend-py-compose
     ports:
-      - "8080:80" # Map cổng 80 của Nginx trong container ra cổng 8080 trên máy host
+      - "8080:8080" # FastAPI frontend sẽ chạy trên port 8080 bên trong container
     volumes:
-      - ./admin_portal_frontend:/usr/share/nginx/html # Mount code frontend để thay đổi được phản ánh
-    depends_on: # Frontend này phụ thuộc vào backend của nó
-      - admin-portal-backend
+      - ./admin_portal_frontend:/app/admin_portal_frontend # Mount code frontend
+    environment:
+      # ADMIN_PORTAL_BACKEND_URL sẽ được pydantic-settings trong admin_portal_frontend/config.py đọc
+      - ADMIN_PORTAL_BACKEND_URL=http://admin-portal-backend-compose:8002
+    depends_on:
+      - admin-portal-backend # Frontend này phụ thuộc vào backend của nó
     networks:
       - ocr_network
     restart: unless-stopped

@@ -1,18 +1,13 @@
-# Sử dụng base image Nginx chính thức
-FROM nginx:alpine
+FROM python:3.10-slim
 
-# Sao chép file cấu hình Nginx tùy chỉnh của bạn vào thư mục conf.d với một tên khác
-COPY ./admin_portal_frontend/nginx.conf /etc/nginx/conf.d/my-app.conf
+WORKDIR /app
 
-# Sao chép nội dung của thư mục admin_portal_frontend (chứa index.html)
-# vào thư mục phục vụ web mặc định của Nginx
-COPY ./admin_portal_frontend/ /usr/share/nginx/html/
+COPY ./admin_portal_frontend/requirements.txt ./admin_portal_frontend/requirements.txt
 
-# Kiểm tra cú pháp cấu hình Nginx
-RUN nginx -t
+RUN pip install --no-cache-dir --trusted-host pypi.python.org --trusted-host pypi.org --trusted-host files.pythonhosted.org -r ./admin_portal_frontend/requirements.txt
 
-# Mở cổng 80 mà Nginx lắng nghe mặc định
-EXPOSE 80
+COPY ./admin_portal_frontend/ /app/admin_portal_frontend/
 
-# Lệnh để khởi động Nginx
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 8080
+
+CMD ["uvicorn", "admin_portal_frontend.main:app", "--host", "0.0.0.0", "--port", "8080"]
