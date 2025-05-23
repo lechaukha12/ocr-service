@@ -1,7 +1,8 @@
 from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import relationship # Sẽ dùng sau nếu có quan hệ
 
-from .database import Base # Import Base từ database.py
+# Sửa import tương đối thành tuyệt đối
+from database import Base # Import Base từ database.py
 
 # --- SQLAlchemy Model ---
 class UserDB(Base):
@@ -51,7 +52,7 @@ class User(UserBase):
     # ekyc_status: Optional[str] = "pending"
 
     class Config:
-        from_attributes = True
+        from_attributes = True # orm_mode is deprecated, use from_attributes for Pydantic v2
 
 
 # UserInDBBase không còn cần thiết vì chúng ta sẽ dùng UserDB cho DB

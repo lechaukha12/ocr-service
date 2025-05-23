@@ -1,81 +1,103 @@
 services:
   user-service:
     build:
-      context: .
-      dockerfile: dockerfile.user_service
+      context: ./user_service
+      dockerfile: Dockerfile
     container_name: user-service-compose
     ports:
       - "8001:8001"
     volumes:
-      - ./user_service:/app/user_service
-    networks:
-      - ocr_network
-    restart: unless-stopped
-
-  api-gateway:
-    build:
-      context: .
-      dockerfile: dockerfile.apigw_service
-    container_name: api-gateway-compose
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./api_gateway:/app/api_gateway
-    environment:
-      - USER_SERVICE_URL=http://user-service-compose:8001
-      # - STORAGE_SERVICE_URL=http://storage-service-compose:8003
-      # - ADMIN_PORTAL_BACKEND_URL=http://admin-portal-backend-compose:8002
-    depends_on:
-      - user-service
-    networks:
-      - ocr_network
-    restart: unless-stopped
-
-  admin-portal-backend:
-    build:
-      context: .
-      dockerfile: dockerfile.admin_portal_service
-    container_name: admin-portal-backend-compose
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./admin_portal_backend_service:/app/admin_portal_backend_service
-    environment:
-      - USER_SERVICE_URL=http://user-service-compose:8001
-    depends_on:
-      - user-service
+      - ./user_service:/app
     networks:
       - ocr_network
     restart: unless-stopped
 
   storage-service:
     build:
-      context: .
-      dockerfile: dockerfile.storage_service
+      context: ./storage_service
+      dockerfile: Dockerfile
     container_name: storage-service-compose
     ports:
       - "8003:8003"
     volumes:
-      - ./storage_service/uploads:/app/storage_service/uploads
-      - ./storage_service:/app/storage_service
+      - ./storage_service/uploads:/app/uploads
+      - ./storage_service:/app
+    networks:
+      - ocr_network
+    restart: unless-stopped
+
+  generic-ocr-service:
+    build:
+      context: ./generic_ocr_service  # <<< SỬA Ở ĐÂY: dấu gạch dưới _
+      dockerfile: Dockerfile
+    container_name: generic-ocr-service-compose
+    ports:
+      - "8004:8004"
+    # Bạn có thể bỏ comment dòng volumes này sau khi image được build đúng
+    volumes:
+      - ./generic_ocr_service:/app # <<< SỬA Ở ĐÂY: dấu gạch dưới _
+    networks:
+      - ocr_network
+    restart: unless-stopped
+    # environment:
+    #   - TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+
+  admin-portal-backend:
+    build:
+      context: ./admin_portal_backend_service
+      dockerfile: Dockerfile
+    container_name: admin-portal-backend-compose
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./admin_portal_backend_service:/app
+    environment:
+      - USER_SERVICE_URL=http://user-service-compose:8001
+    depends_on:
+      - user-service
+    networks:
+      - ocr_network
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./api_gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway-compose
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api_gateway:/app
+    environment:
+      - USER_SERVICE_URL=http://user-service-compose:8001
+      - STORAGE_SERVICE_URL=http://storage-service-compose:8003
+      - ADMIN_PORTAL_BACKEND_SERVICE_URL=http://admin-portal-backend-compose:8002
+      - GENERIC_OCR_SERVICE_URL=http://generic-ocr-service-compose:8004
+    depends_on:
+      - user-service
+      - storage-service
+      - generic-ocr-service
+      - admin-portal-backend
     networks:
       - ocr_network
     restart: unless-stopped
 
   admin-portal-frontend:
     build:
-      context: .
-      dockerfile: dockerfile.admin_portal_frontend # Sử dụng Dockerfile mới cho Python/FastAPI frontend
+      context: ./admin_portal_frontend
+      dockerfile: Dockerfile
     container_name: admin-portal-frontend-py-compose
     ports:
-      - "8080:8080" # FastAPI frontend sẽ chạy trên port 8080 bên trong container
+      - "8080:8080"
     volumes:
-      - ./admin_portal_frontend:/app/admin_portal_frontend # Mount code frontend
+      - ./admin_portal_frontend:/app
     environment:
-      # ADMIN_PORTAL_BACKEND_URL sẽ được pydantic-settings trong admin_portal_frontend/config.py đọc
       - ADMIN_PORTAL_BACKEND_URL=http://admin-portal-backend-compose:8002
+      # - SECRET_KEY=your_frontend_secret_key_here
+      # - ALGORITHM=HS256
+      # - ACCESS_TOKEN_EXPIRE_MINUTES=30
     depends_on:
-      - admin-portal-backend # Frontend này phụ thuộc vào backend của nó
+      - admin-portal-backend
     networks:
       - ocr_network
     restart: unless-stopped
