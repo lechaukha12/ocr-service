@@ -2,10 +2,23 @@ from fastapi import FastAPI, HTTPException, status, Body
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List, Callable
 import re
+import json 
 
-app = FastAPI(title="eKYC Information Extraction Service")
+import google.generativeai as genai
+from config import settings 
 
-# Define common Vietnamese characters for regex patterns
+app = FastAPI(title="eKYC Information Extraction Service (Hybrid)")
+
+IS_GEMINI_CONFIGURED = False
+if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+    try:
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        IS_GEMINI_CONFIGURED = True
+    except Exception as e:
+        IS_GEMINI_CONFIGURED = False
+else:
+    pass
+
 VIETNAMESE_CHARS = "A-ZÀ-ỹÁ-ỹẠ-ỹĂ-ỹẰ-ỹẲ-ỹẴ-ỹẶ-ỹÂ-ỹẦ-ỹẨ-ỹẪ-ỹẬ-ỹĐđÈ-ỹÉ-ỹẸ-ỹÊ-ỹỀ-ỹỂ-ỹỄ-ỹỆ-ỹÌ-ỹÍ-ỹỈ-ỹỊ-ỹÒ-ỹÓ-ỹỌ-ỹÔ-ỹỒ-ỹỔ-ỹỖ-ỹỘ-ỹƠ-ỹỜ-ỹỞ-ỹỠ-ỹỢ-ỹÙ-ỹÚ-ỹỦ-ỹŨ-ỹỤ-ỹƯ-ỹỪ-ỹỨ-ỹỬ-ỹỮ-ỹỰ-ỹỲ-ỹÝ-ỹỶ-ỹỸ-ỹỴ-ỹ"
 NAME_ALLOWED_CHARS = f"{VIETNAMESE_CHARS}A-Z\\s'.`-" 
 ADDRESS_ALLOWED_CHARS = f"{VIETNAMESE_CHARS}A-Z0-9\\s.,/-()" 
@@ -14,6 +27,8 @@ ID_NUMBER_CHARS = r"\d\s"
 class OCRInput(BaseModel):
     ocr_text: str = Field(..., example="Số/NG: 060088002136\nHọ và tên/Full name: LÊ CHÂU KHẢ\nNgày sinh/Date of birth: 12/04/1998\nGiới tính/Sex: Nam Quốc tịch/Nationality: Việt Nam\nQuê quán/Place of origin: Châu Thành, Long An\nNơi thường trú/Place of residence: Tổ 5, Phú Điền, Hàm Hiệp, Hàm Thuận Bắc, Bình Thuận\nCó giá trị đến/Date of expiry: 12/04/2038\nĐặc điểm nhận dạng: Nốt ruồi C.Trán P 2cm\nngày 15 tháng 07 năm 2015\nNơi cấp: CỤC TRƯỞNG CỤC CẢNH SÁT QLHC VỀ TTXH")
     language: Optional[str] = Field("vie", example="vie")
+    use_gemini_fallback: Optional[bool] = Field(True)
+
 
 class ExtractedInfo(BaseModel):
     id_number: Optional[str] = None
@@ -31,6 +46,7 @@ class ExtractedInfo(BaseModel):
     religion: Optional[str] = None 
     raw_input: str
     errors: Optional[List[Dict[str, str]]] = None
+    extraction_method: Optional[str] = "regex" 
 
 ID_KEYWORDS = [
     r"Số", r"SỐ", r"No\.", r"SỐ/NO\.", r"Số/N[Gg]", r"SỐ/NG", 
@@ -95,22 +111,20 @@ ETHNICITY_KWS_RGX = create_keyword_regex_group(ETHNICITY_KEYWORDS)
 RELIGION_KWS_RGX = create_keyword_regex_group(RELIGION_KEYWORDS)
 
 def clean_text_before_extraction(text: str) -> str:
-    text = re.sub(r'\s*\n\s*', '\n', text) # Normalize newlines
+    text = re.sub(r'\s*\n\s*', '\n', text) 
     text = re.sub(r' +', ' ', text) 
-    # More targeted replacements based on observed OCR errors
     text = text.replace("Naionelt", "Nationality")
     text = text.replace("origlr", "origin")
     text = text.replace("residerce", "residence")
     text = text.replace("bifh", "birth")
     text = text.replace("Dafe", "Date")
-    text = text.replace("ƒ", ":") # Common OCR error for colon
+    text = text.replace("ƒ", ":") 
     text = text.replace("Í", ":")
-    text = text.replace("l ", ": ") # "l " often means ": "
+    text = text.replace("l ", ": ") 
     return text.strip()
 
-def general_field_cleaner(value: Optional[str]) -> Optional[str]:
-    if not value:
-        return None
+def general_field_cleaner(value: Optional[str], field_name: Optional[str] = None) -> Optional[str]: # Thêm field_name
+    if not value: return None
     value = value.replace('\n', ' ').strip()
     value = re.sub(r'\s*\-\s*¬?\s*$', '', value).strip() 
     value = re.sub(r'\s*"\d+\.\.\.\s*', '', value).strip() 
@@ -129,19 +143,16 @@ def post_process_name(name: Optional[str], field_name: str) -> Optional[str]:
     if not name: return None
     name = re.sub(rf"^[^{NAME_ALLOWED_CHARS}]+|[^{NAME_ALLOWED_CHARS}]+$", "", name).strip()
     name = re.sub(r'\s+', ' ', name).strip()
-    name = re.sub(r'[.!`]+$', '', name).strip() # Remove trailing punctuation
+    name = re.sub(r'[.!`]+$', '', name).strip() 
     name = name.upper() 
-    return name if len(name) > 1 else None # Allow single-letter names if that's the case
+    return name if len(name) > 1 else None
 
 def normalize_date_string(date_str: Optional[str], field_name: str = "") -> Optional[str]:
     if not date_str: return None
-    
     if field_name == "expiry_date" and re.search(r"Không\s*(?:thời)?\s*hạn|Vô\s*thời\s*hạn|KHH", date_str, re.IGNORECASE):
         return "Không thời hạn"
-
     cleaned_date = re.sub(r'\s*([/\.\-])\s*', r'\1', date_str) 
     cleaned_date = re.sub(r'[^0-9/]', '', cleaned_date) 
-    
     match = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', cleaned_date)
     if match:
         day, month, year = match.groups()
@@ -149,57 +160,53 @@ def normalize_date_string(date_str: Optional[str], field_name: str = "") -> Opti
             d_int, m_int, y_int = int(day), int(month), int(year)
             if not (1 <= m_int <= 12 and 1 <= d_int <= 31 and 1900 <= y_int <= 2100):
                 return None 
-        except ValueError:
-            return None 
+        except ValueError: return None 
         return f"{day.zfill(2)}/{month.zfill(2)}/{year}"
     return None
 
 def post_process_address(address: Optional[str], field_name: str) -> Optional[str]:
     if not address: return None
-    
-    # Remove keyword labels if captured at the beginning more robustly
     keywords_rgx_to_remove = KEYWORD_CONFIG.get(field_name, {}).get("keywords_rgx_for_cleaning", "")
-    if keywords_rgx_to_remove: # keywords_rgx_for_cleaning should be the same as keywords_rgx
+    if keywords_rgx_to_remove:
         address = re.sub(rf"^\s*{keywords_rgx_to_remove}\s*[:\sƒlÍ.]*\s*", "", address, flags=re.IGNORECASE).strip()
-
-    address = general_field_cleaner(address)
-    # Remove common OCR artifacts at the end of addresses
+    address = general_field_cleaner(address, field_name) # Truyền field_name
     address = re.sub(r'\s*-\s*¬\s*$', '', address).strip()
     address = re.sub(r'\s*\^s*$', '', address).strip()
     address = re.sub(r'\s*a_—ẴẮ`\s*_—\.\s*r3\s*l\s*mẽ\s*$', '', address, flags=re.IGNORECASE).strip()
     return address
 
 def extract_single_field_from_patterns(
-    patterns: List[str], 
-    text: str, 
-    field_name: str, 
-    group_index: int = 1, # Default group index
+    patterns: List[Any], text: str, field_name: str, 
+    default_group_index: int = 1, 
     flags=re.IGNORECASE | re.DOTALL, 
     post_process_func: Optional[Callable[[Optional[str], str], Optional[str]]] = None
 ) -> Optional[str]:
-    for i, pattern_or_spec in enumerate(patterns):
-        current_pattern = pattern_or_spec
-        current_group_index = group_index # Use default unless specified
+    for pattern_spec in patterns:
+        current_pattern: str
+        current_group_index: int = default_group_index
         
-        if isinstance(pattern_or_spec, tuple): # Allow (pattern, group_index)
-            current_pattern, current_group_index = pattern_or_spec
+        if isinstance(pattern_spec, tuple) and len(pattern_spec) == 2:
+            current_pattern, current_group_index = pattern_spec
+        elif isinstance(pattern_spec, str):
+            current_pattern = pattern_spec
+        else:
+            continue
 
-        match = re.search(current_pattern, text, flags)
-        if match:
-            try:
+        try:
+            match = re.search(current_pattern, text, flags)
+            if match:
                 value = match.group(current_group_index)
                 if value is not None:
                     value = value.strip() 
                     if post_process_func:
                         value = post_process_func(value, field_name)
                     else: 
-                        value = general_field_cleaner(value)
-                    
+                        value = general_field_cleaner(value, field_name) # <--- SỬA Ở ĐÂY
                     return value if value else None 
-            except IndexError:
-                # This can happen if the group_index is out of bounds for the specific pattern that matched
-                # print(f"IndexError for field {field_name}, pattern {i}, group {current_group_index}")
-                continue 
+        except IndexError:
+            continue
+        except re.error as e:
+            continue
     return None
 
 KEYWORD_CONFIG: Dict[str, Dict[str, Any]] = {
@@ -220,7 +227,7 @@ KEYWORD_CONFIG: Dict[str, Dict[str, Any]] = {
 
 EXTRACTION_PATTERNS: Dict[str, List[Any]] = {
     "id_number": [
-        rf"{ID_KWS_RGX}\s*[:\s.]*\s*((?:[{ID_NUMBER_CHARS}]{{10,18}}))", # More flexible length
+        rf"{ID_KWS_RGX}\s*[:\s.]*\s*((?:[{ID_NUMBER_CHARS}]{{10,18}}))", 
         (r"^(?:[^{{\n}}]*\n)?\s*((?:\d\s*){{11}}\d)\s*$", 1), 
         (r"^(?:[^{{\n}}]*\n)?\s*((?:\d\s*){{8}}\d)\s*$", 1)   
     ],
@@ -232,7 +239,7 @@ EXTRACTION_PATTERNS: Dict[str, List[Any]] = {
         rf"{DOB_KWS_RGX}\s*[:\s!]*\s*([\d\s./-]+?)(?=\n\s*(?:{SEX_KWS_RGX}|{NAT_KWS_RGX})|$)"
     ],
     "gender": [
-        rf"{SEX_KWS_RGX}\s*[:\s!]*\s*(Nam|Nữ|NAM|NỮ|Male|Female|N[aạA][mn])(?:\s|\.|$)" # Added Narn/Naam
+        rf"{SEX_KWS_RGX}\s*[:\s!]*\s*(Nam|Nữ|NAM|NỮ|Male|Female|N[aạA][mn])(?:\s|\.|$)"
     ],
     "nationality": [
         rf"{NAT_KWS_RGX}\s*[:\sV]*\s*([{VIETNAMESE_CHARS}\s.]+?)(?=\n\s*(?:{ORIGIN_KWS_RGX}|Dân tộc|{ETHNICITY_KWS_RGX})|$)"
@@ -252,7 +259,7 @@ EXTRACTION_PATTERNS: Dict[str, List[Any]] = {
     "place_of_issue": [
         (rf"{ISSUE_PLACE_KWS_RGX}\s*[:\s]*\s*([^{{\n}}]+?)(?=\n\s*(?:GIÁM ĐỐC|CỤC TRƯỞNG|TRUNG TÁ|CHỦ TỊCH)|$)", 1),
         (r"(?:GIÁM ĐỐC|CỤC TRƯỞNG)\s*(?:CÔNG AN|CA|C[SṢ]|CẢNH SÁT)\s*(?:TỈNH|THÀNH PHỐ|TP\.|T\.)\s*([{VIETNAMESE_CHARS}\s]+)", 1),
-        (rf"(CỤC\s*(?:TRƯỞNG\s+CỤC\s+)?CẢNH SÁT\s*(?:QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI|QLHC VỀ TTXH|ĐKQL CƯ TRÚ VÀ DLQG VỀ DÂN CƯ|CS QLHC VỀ TTXH|ĐKQL CƯ TRÚ))", 1)
+        (rf"(CỤC\s*(?:TRƯỞNG\s+CỤC\s+)?CẢNH SÁT\s*(?:QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI|QLHC VỀ TTXH|ĐKQL CƯ TRÚ VÀ DLQG VỀ DÂN CƯ|CS QLHC VỀ TTXH|ĐKQL CƯ TRÚ))", 1) 
     ],
     "personal_identification_features": [
         rf"{ID_FEATURES_KWS_RGX}\s*[:\s]*\s*([\s\S]+?)(?=\n\s*(?:{ISSUE_DATE_KWS_RGX}|{EXPIRY_KWS_RGX}|{ISSUE_PLACE_KWS_RGX}|GIÁM ĐỐC|CỤC TRƯỞNG|CHỦ TỊCH)|$)"
@@ -265,65 +272,130 @@ EXTRACTION_PATTERNS: Dict[str, List[Any]] = {
     ]
 }
 
+async def extract_with_gemini(ocr_text: str, fields_to_extract: List[str]) -> Optional[Dict[str, Any]]:
+    global IS_GEMINI_CONFIGURED
+    if not IS_GEMINI_CONFIGURED:
+        return {"error_gemini_not_configured": "Gemini API Key not configured or invalid."}
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        prompt = f"""
+        Nhiệm vụ: Trích xuất thông tin từ văn bản OCR của một giấy tờ tùy thân Việt Nam (CCCD/CMND).
+        Văn bản OCR:
+        ---
+        {ocr_text}
+        ---
+        Yêu cầu:
+        1. Trích xuất các trường thông tin sau: {', '.join(fields_to_extract)}.
+        2. Trả về kết quả dưới dạng một đối tượng JSON duy nhất.
+        3. Nếu không tìm thấy thông tin cho một trường, giá trị của trường đó phải là `null` (không phải chuỗi "null").
+        4. Định dạng ngày tháng (dd/mm/yyyy).
+        5. Viết HOA toàn bộ tên người.
+        6. Loại bỏ mọi khoảng trắng khỏi Số CCCD/CMND.
+        7. Đối với quê quán và nơi thường trú, cố gắng lấy địa chỉ đầy đủ nhất có thể.
+        8. Chỉ trả về đối tượng JSON, không có bất kỳ giải thích hay ký tự ```json ``` nào bao quanh.
+
+        Ví dụ JSON (chỉ là cấu trúc, giá trị sẽ phụ thuộc vào văn bản OCR):
+        {{
+          "id_number": "012345678912",
+          "full_name": "NGUYỄN VĂN A",
+          "date_of_birth": "01/01/1990",
+          "gender": "Nam",
+          "nationality": "Việt Nam",
+          "place_of_origin": "Xã X, Huyện Y, Tỉnh Z",
+          "place_of_residence": "Số nhà A, Đường B, Phường C, Quận D, Thành phố E",
+          "expiry_date": "01/01/2030",
+          "date_of_issue": "15/07/2015",
+          "place_of_issue": "CỤC CẢNH SÁT QLHC VỀ TTXH",
+          "personal_identification_features": "Nốt ruồi cách đuôi mắt trái 1cm",
+          "ethnicity": "Kinh"
+        }}
+        """
+        
+        response = await model.generate_content_async(prompt)
+        json_text = response.text
+        try:
+            gemini_result = json.loads(json_text)
+            return gemini_result
+        except json.JSONDecodeError:
+            match = re.search(r"```json\s*([\s\S]+?)\s*```", json_text)
+            if match:
+                json_text_from_markdown = match.group(1)
+                try:
+                    gemini_result = json.loads(json_text_from_markdown)
+                    return gemini_result
+                except json.JSONDecodeError as e_markdown:
+                    return {"error_gemini_json_decode": str(e_markdown), "gemini_raw_text": json_text}
+            else:
+                return {"error_gemini_no_json_found": "No JSON block found or direct parse failed", "gemini_raw_text": json_text}
+    except Exception as e:
+        return {"error_gemini_api_call": f"{type(e).__name__}: {str(e)}"}
+
 @app.post("/extract_info/", response_model=ExtractedInfo, tags=["Extraction"])
 async def extract_information_from_ocr(ocr_input: OCRInput = Body(...)):
     original_text = ocr_input.ocr_text
     text_to_process = clean_text_before_extraction(original_text)
     
-    extracted_data: Dict[str, Any] = {"raw_input": original_text}
-    current_errors: List[Dict[str, str]] = []
+    extracted_data_regex: Dict[str, Any] = {"raw_input": original_text, "extraction_method": "regex"}
+    current_errors_regex: List[Dict[str, str]] = []
 
     for field_key, config in KEYWORD_CONFIG.items():
         patterns_for_field = EXTRACTION_PATTERNS.get(field_key, [])
         post_processor = config.get("post_process")
-        
         value = None
         if field_key == "date_of_issue": 
-            issue_date_match = re.search(EXTRACTION_PATTERNS["date_of_issue"][0], text_to_process, re.IGNORECASE)
-            if issue_date_match:
-                try:
-                    day = issue_date_match.group("day")
-                    month = issue_date_match.group("month")
-                    year = issue_date_match.group("year")
-                    temp_date_str = f"{day}/{month}/{year}"
-                    if post_processor:
-                         value = post_processor(temp_date_str, field_key)
-                except (IndexError, AttributeError):
-                    pass
+            if EXTRACTION_PATTERNS["date_of_issue"]: 
+                issue_date_match = re.search(EXTRACTION_PATTERNS["date_of_issue"][0], text_to_process, re.IGNORECASE)
+                if issue_date_match:
+                    try:
+                        day = issue_date_match.group("day")
+                        month = issue_date_match.group("month")
+                        year = issue_date_match.group("year")
+                        temp_date_str = f"{day}/{month}/{year}"
+                        if post_processor: value = post_processor(temp_date_str, field_key)
+                    except (IndexError, AttributeError): pass
         elif patterns_for_field:
-            value = extract_single_field_from_patterns(
-                patterns_for_field, 
-                text_to_process, 
-                field_key,
-                post_process_func=post_processor
-            )
+            value = extract_single_field_from_patterns(patterns_for_field, text_to_process, field_key, post_process_func=post_processor)
+        extracted_data_regex[field_key] = value
+
+    key_fields_present_regex = all([
+        extracted_data_regex.get("id_number"),
+        extracted_data_regex.get("full_name"),
+        extracted_data_regex.get("date_of_birth")
+    ])
+
+    if ocr_input.use_gemini_fallback and not key_fields_present_regex and IS_GEMINI_CONFIGURED:
+        fields_to_request_from_gemini = list(KEYWORD_CONFIG.keys()) 
+        gemini_result = await extract_with_gemini(original_text, fields_to_request_from_gemini) 
         
-        extracted_data[field_key] = value
-
-    # Post-extraction validation and cross-field checks (examples)
-    if extracted_data.get("id_number") and extracted_data.get("full_name") and extracted_data.get("date_of_birth"):
-        # All key fields found, potentially clear generic errors or add specific ones if values are still suspicious
-        pass
-    else:
-        if not extracted_data.get("id_number"):
-            current_errors.append({"field": "id_number", "message": "Không thể trích xuất Số CCCD/CMND."})
-        if not extracted_data.get("full_name"):
-            current_errors.append({"field": "full_name", "message": "Không thể trích xuất Họ và tên."})
-        if not extracted_data.get("date_of_birth"):
-            current_errors.append({"field": "date_of_birth", "message": "Không thể trích xuất Ngày sinh."})
+        if gemini_result and not any(k.startswith("error_gemini") for k in gemini_result):
+            extracted_data_regex["extraction_method"] = "hybrid_gemini_fallback"
+            for field_key in fields_to_request_from_gemini:
+                gemini_value = gemini_result.get(field_key)
+                post_processor_for_gemini = KEYWORD_CONFIG.get(field_key, {}).get("post_process")
+                if post_processor_for_gemini and gemini_value is not None:
+                    processed_gemini_value = post_processor_for_gemini(str(gemini_value), field_key) 
+                    extracted_data_regex[field_key] = processed_gemini_value
+                elif gemini_value is not None: 
+                    extracted_data_regex[field_key] = general_field_cleaner(str(gemini_value), field_key) # Truyền field_name
+                elif extracted_data_regex.get(field_key) is None and gemini_value is None:
+                     extracted_data_regex[field_key] = None
     
-    # Consolidate nationality if still messy
-    if extracted_data.get("nationality") and not extracted_data["nationality"] == "Việt Nam":
-        if re.search(r"Việt\s*Nam|Mật\s*Nam|VIET NAM", extracted_data["nationality"], re.IGNORECASE):
-            extracted_data["nationality"] = "Việt Nam"
-        # else keep it as is, or add error if it looks very wrong
+    if not extracted_data_regex.get("id_number"):
+        current_errors_regex.append({"field": "id_number", "message": "Không thể trích xuất Số CCCD/CMND."})
+    if not extracted_data_regex.get("full_name"):
+        current_errors_regex.append({"field": "full_name", "message": "Không thể trích xuất Họ và tên."})
+    if not extracted_data_regex.get("date_of_birth"):
+        current_errors_regex.append({"field": "date_of_birth", "message": "Không thể trích xuất Ngày sinh."})
+    
+    if current_errors_regex:
+        extracted_data_regex["errors"] = current_errors_regex
+    elif "errors" in extracted_data_regex and not current_errors_regex : # Xóa errors nếu không còn lỗi mới
+         del extracted_data_regex["errors"]
 
-    if current_errors:
-        extracted_data["errors"] = current_errors
-
-    return ExtractedInfo(**extracted_data)
+    return ExtractedInfo(**extracted_data_regex)
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "message": "eKYC Information Extraction Service is running!"}
+    return {"status": "healthy", "message": "eKYC Information Extraction Service (Hybrid) is running!"}
 

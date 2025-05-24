@@ -5,7 +5,7 @@ import os
 from typing import Dict, Any, Optional, List
 
 API_GATEWAY_URL = "http://localhost:8000"
-REAL_IMAGE_BASENAME = "IMG_4620" # Đặt tên tệp ảnh của bạn ở đây (không bao gồm phần mở rộng)
+REAL_IMAGE_BASENAME = "IMG_4620" # Đảm bảo tên tệp ảnh của bạn ở đây (không bao gồm phần mở rộng)
 
 def print_section_header(title: str):
     print("\n" + "=" * 10 + f" {title} " + "=" * 10)
@@ -16,9 +16,9 @@ def print_response_details(response: requests.Response, message: str = ""):
     print(f"URL: {response.url}")
     print(f"Status Code: {response.status_code}")
     try:
-        print(f"Response JSON: {response.json()}")
+        print(f"Response JSON: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
     except json.JSONDecodeError:
-        print(f"Response Text: {response.text[:500]}...")
+        print(f"Response Text: {response.text[:1000]}...") # Tăng giới hạn text để xem lỗi rõ hơn nếu có
     print("-" * 40)
 
 def generate_unique_user_data() -> Dict[str, str]:
@@ -30,13 +30,13 @@ def generate_unique_user_data() -> Dict[str, str]:
     }
 
 def find_real_image(basename: str) -> Optional[str]:
-    supported_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+    supported_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".JPG", ".JPEG", ".PNG"] # Thêm phần mở rộng viết hoa
     for ext in supported_extensions:
         filename = f"{basename}{ext}"
         if os.path.exists(filename):
             print(f"Tìm thấy ảnh thực tế: {filename}")
             return filename
-    print(f"Không tìm thấy ảnh '{basename}' với các phần mở rộng được hỗ trợ: {supported_extensions}")
+    print(f"Không tìm thấy ảnh '{basename}' với các phần mở rộng được hỗ trợ tại '{os.getcwd()}': {supported_extensions}")
     return None
 
 def test_01_register_user(user_data: Dict[str, str]) -> Optional[Dict[str, Any]]:
@@ -75,7 +75,6 @@ def test_04_upload_single_file_via_gateway(access_token: str, filename: str = "t
         return None
 
     storage_upload_url = f"{API_GATEWAY_URL}/storage/upload/file/"
-    # Tạo file tạm để upload
     with open(filename, "w") as f:
         f.write(content)
 
@@ -92,7 +91,7 @@ def test_04_upload_single_file_via_gateway(access_token: str, filename: str = "t
         print(e)
     finally:
         if os.path.exists(filename):
-            os.remove(filename) # Xóa file tạm sau khi upload
+            os.remove(filename) 
     return None
 
 def test_05_get_file_via_gateway(access_token: str, uploaded_filename_on_storage: str):
@@ -108,14 +107,15 @@ def test_05_get_file_via_gateway(access_token: str, uploaded_filename_on_storage
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
         response = requests.get(storage_get_file_url, headers=headers)
-        print(f"URL: {response.url}")
-        print(f"Status Code: {response.status_code}")
+        # print(f"URL: {response.url}") # Đã có trong print_response_details
+        # print(f"Status Code: {response.status_code}") # Đã có trong print_response_details
         if response.status_code == 200:
             print(f"Content-Type: {response.headers.get('content-type')}")
             print(f"Content length: {len(response.content)}")
-            # Không in nội dung file vì có thể là binary hoặc rất dài
+            print_response_details(response, "File content (first 100 chars if text):") # In lại để thấy response JSON nếu có
+            # print(f"File content (first 100 chars if text): {response.text[:100]}")
         else:
-            print_response_details(response) # In chi tiết nếu có lỗi
+            print_response_details(response) 
     except requests.exceptions.ConnectionError as e:
         print(f"Could not connect to {storage_get_file_url}. Ensure API Gateway is running and the route is configured.")
         print(e)
@@ -125,10 +125,9 @@ def test_06_ocr_get_languages_via_gateway(access_token: str):
     print_section_header("API Gateway -> OCR Service: Get Available Languages")
     if not access_token: 
         print("No access token provided for ocr_get_languages_via_gateway (if required by gateway).")
-        # return None # Bỏ comment nếu bạn muốn dừng ở đây khi không có token
 
     ocr_languages_url = f"{API_GATEWAY_URL}/ocr/languages/"
-    headers = {"Authorization": f"Bearer {access_token}"} # Nếu endpoint yêu cầu
+    headers = {"Authorization": f"Bearer {access_token}"} 
 
     try:
         response = requests.get(ocr_languages_url, headers=headers)
@@ -140,11 +139,10 @@ def test_06_ocr_get_languages_via_gateway(access_token: str):
         print(e)
     return None
 
-def test_07_ocr_image_via_gateway(access_token: str, image_path: str, lang: str = "vie", psm_value: str = "6"): # Thêm psm_value
-    print_section_header(f"API Gateway -> OCR Service: OCR Image '{os.path.basename(image_path)}' with lang '{lang}' psm '{psm_value}'") # Log psm
+def test_07_ocr_image_via_gateway(access_token: str, image_path: str, lang: str = "vie", psm_value: str = "3"): 
+    print_section_header(f"API Gateway -> OCR Service: OCR Image '{os.path.basename(image_path)}' with lang '{lang}' psm '{psm_value}'")
     if not access_token: 
         print("No access token provided for ocr_image_via_gateway (if required by gateway).")
-        # return None
     
     if not os.path.exists(image_path):
         print(f"Test image file not found: {image_path}")
@@ -153,7 +151,7 @@ def test_07_ocr_image_via_gateway(access_token: str, image_path: str, lang: str 
     ocr_image_url = f"{API_GATEWAY_URL}/ocr/image/"
     
     files_payload = {'file': (os.path.basename(image_path), open(image_path, 'rb'))}
-    data_payload = {'lang': lang, 'psm': psm_value} # Thêm psm vào payload
+    data_payload = {'lang': lang, 'psm': psm_value} 
     headers = {"Authorization": f"Bearer {access_token}"} 
 
     try:
@@ -166,8 +164,8 @@ def test_07_ocr_image_via_gateway(access_token: str, image_path: str, lang: str 
         print(e)
     return None
 
-def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: str, lang: str = "vie") -> Optional[Dict[str, Any]]:
-    print_section_header("API Gateway -> eKYC Info Extraction: Extract Info")
+def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: str, lang: str = "vie", use_gemini: bool = True) -> Optional[Dict[str, Any]]:
+    print_section_header(f"API Gateway -> eKYC Info Extraction: Extract Info (use_gemini={use_gemini})")
     if not access_token:
         print("No access token provided for ekyc_extract_info_via_gateway.")
         return None
@@ -183,7 +181,8 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
     }
     payload = {
         "ocr_text": ocr_text_sample,
-        "language": lang
+        "language": lang,
+        "use_gemini_fallback": use_gemini # Thêm tham số này
     }
 
     try:
@@ -244,7 +243,7 @@ if __name__ == "__main__":
 
             print(f"\nSử dụng ảnh '{real_image_path}' cho OCR...")
             
-            psm_to_test = "3" 
+            psm_to_test = "3" # Bạn có thể thay đổi giá trị này (ví dụ: "3", "6", "11", "13")
 
             ocr_result_real_image_vie = test_07_ocr_image_via_gateway(user_token, real_image_path, lang="vie", psm_value=psm_to_test)
             
@@ -252,7 +251,7 @@ if __name__ == "__main__":
                 print(f"OCR Result (vie, psm={psm_to_test}) for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_real_image_vie.get('text')}\n---")
                 ocr_result_text_for_extraction = ocr_result_real_image_vie.get("text") 
             else:
-                print(f"Không nhận được kết quả văn bản từ OCR cho ảnh '{real_image_path}' (lang: vie, psm={psm_to_test}).")
+                print(f"Không nhận được kết quả văn bản từ OCR cho ảnh '{os.path.basename(real_image_path)}' (lang: vie, psm={psm_to_test}).")
                 ocr_result_text_for_extraction = f"Lỗi OCR hoặc không có văn bản (vie, psm={psm_to_test})."
         else:
             print("Không có token người dùng, bỏ qua kiểm thử OCR với ảnh thật.")
@@ -261,9 +260,18 @@ if __name__ == "__main__":
 
     print("\n--- eKYC Information Extraction Service Tests (via API Gateway) ---")
     if user_token and ocr_result_text_for_extraction:
-        extracted_info = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie")
-        if extracted_info:
-            print(f"Extracted Information: {json.dumps(extracted_info, indent=2, ensure_ascii=False)}")
+        # Chạy thử với Gemini fallback được bật
+        extracted_info_with_gemini = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie", use_gemini=True)
+        if extracted_info_with_gemini:
+            print(f"Extracted Information (Gemini Fallback Enabled):") # {json.dumps(extracted_info_with_gemini, indent=2, ensure_ascii=False)}")
+            # print_response_details đã in rồi
+
+        # (Tùy chọn) Chạy thử với Gemini fallback bị tắt để so sánh
+        # print("\n--- Testing eKYC Extraction with Gemini Fallback DISABLED ---")
+        # extracted_info_no_gemini = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie", use_gemini=False)
+        # if extracted_info_no_gemini:
+        #     print(f"Extracted Information (Gemini Fallback Disabled):") # {json.dumps(extracted_info_no_gemini, indent=2, ensure_ascii=False)}")
+
     elif not user_token:
         print("No user token, skipping eKYC Information Extraction test.")
     else: 
