@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     APP_TITLE: str = "Admin Portal OCR"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 
 
-    SECRET_KEY: str = "your_very_secret_key_for_frontend_admin_portal_jwt_decode" 
+    SECRET_KEY: str = "Abcd1234" 
     ALGORITHM: str = "HS256"
 
     BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))

@@ -3,13 +3,18 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone # Đảm bảo datetime được import
 import httpx
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel 
+from pydantic import BaseModel, EmailStr # Thêm EmailStr
 import math
+import logging # Thêm logging
 
 from config import settings
+
+# Thiết lập logging cơ bản
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.APP_TITLE)
 
@@ -21,6 +26,17 @@ class UserForFrontend(BaseModel):
     username: str
     full_name: Optional[str] = None
     roles: List[str] = []
+
+class UserDetailForTemplate(BaseModel): # Model mới cho dữ liệu người dùng trong template
+    id: int
+    email: EmailStr 
+    username: str
+    is_active: bool
+    created_at: Optional[datetime] = None
+    full_name: Optional[str] = None
+
+    class Config: 
+        from_attributes = True
 
 
 async def get_current_user_from_cookie(request: Request) -> Optional[UserForFrontend]:
@@ -71,8 +87,20 @@ async def fetch_users_from_backend_via_gateway(
             response = await client.get(gateway_admin_users_url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
+            
+            # Chuyển đổi danh sách users thô (list of dicts) thành list of Pydantic models
+            users_list_raw = data.get("items", [])
+            parsed_users_list: List[UserDetailForTemplate] = []
+            if isinstance(users_list_raw, list):
+                for user_dict in users_list_raw:
+                    try:
+                        parsed_users_list.append(UserDetailForTemplate.model_validate(user_dict))
+                    except Exception as val_err:
+                        logger.error(f"Validation error for user data: {user_dict}, error: {val_err}")
+                        # Bỏ qua user này hoặc xử lý lỗi phù hợp
+
             return {
-                "users": data.get("items", []),
+                "users": parsed_users_list, # Trả về danh sách đã được parse
                 "total_users": data.get("total", 0),
                 "current_page": data.get("page", 1),
                 "limit": data.get("limit", limit),
@@ -85,8 +113,10 @@ async def fetch_users_from_backend_via_gateway(
                 error_detail = exc.response.json().get("detail", error_detail)
             except Exception:
                 pass
+            logger.error(f"HTTPStatusError from backend: {error_detail}")
             return {"users": [], "error": error_detail, "total_users": 0, "current_page": page, "limit": limit, "total_pages": 0}
         except Exception as e:
+            logger.error(f"Generic error fetching users: {str(e)}")
             return {"users": [], "error": str(e), "total_users": 0, "current_page": page, "limit": limit, "total_pages": 0}
 
 
@@ -112,10 +142,15 @@ async def login_page_post(request: Request, username: str = Form(...), password:
                 token_data = api_response.json()
                 access_token = token_data.get("access_token")
                 
+                if not access_token: # Kiểm tra access_token có tồn tại không
+                    logger.error("Access token missing in response from /auth/token")
+                    return RedirectResponse(url="/login?error=Authentication failed, no token received.", status_code=status.HTTP_303_SEE_OTHER)
+
                 temp_payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
                 roles_in_token = temp_payload.get("roles", [])
 
                 if "admin" not in roles_in_token:
+                     logger.warning(f"User '{username}' logged in but does not have admin role.")
                      return RedirectResponse(url="/login?error=User is not an admin.", status_code=status.HTTP_303_SEE_OTHER)
 
                 response = RedirectResponse(url="/dashboard/users", status_code=status.HTTP_303_SEE_OTHER)
@@ -134,12 +169,15 @@ async def login_page_post(request: Request, username: str = Form(...), password:
                     error_detail = api_response.json().get("detail", error_detail)
                 except Exception:
                     pass
+                logger.warning(f"Login failed for '{username}': {error_detail} (Status: {api_response.status_code})")
                 return RedirectResponse(url=f"/login?error={error_detail}", status_code=status.HTTP_303_SEE_OTHER)
 
-        except httpx.RequestError:
+        except httpx.RequestError as req_err:
+            logger.error(f"Connection error to authentication service: {req_err}")
             return RedirectResponse(url="/login?error=Could not connect to authentication service", status_code=status.HTTP_303_SEE_OTHER)
-        except JWTError: 
-            return RedirectResponse(url="/login?error=Invalid token received from auth service", status_code=status.HTTP_303_SEE_OTHER)
+        except JWTError as jwt_err: 
+            logger.error(f"JWT decoding error after login: {jwt_err}")
+            return RedirectResponse(url="/login?error=Invalid token structure after login", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/logout")
@@ -156,7 +194,7 @@ async def dashboard_users_page(
     limit: int = 10 
 ):
     admin_token = request.cookies.get("access_token_admin_portal")
-    if not admin_token:
+    if not admin_token: # Should be caught by get_current_active_user, but good to double check
          return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
 
     if page < 1: page = 1
@@ -164,13 +202,16 @@ async def dashboard_users_page(
 
     users_data_from_backend = await fetch_users_from_backend_via_gateway(admin_token, page=page, limit=limit)
     
+    # users_data_from_backend["users"] giờ đây là một list các đối tượng UserDetailForTemplate
+    # Pydantic đã parse chuỗi "created_at" thành đối tượng datetime.
+    
     return templates.TemplateResponse(
         "user_list.html",
         {
             "request": request,
             "settings": settings,
             "current_user": current_user,
-            "users": users_data_from_backend.get("users", []),
+            "users": users_data_from_backend.get("users", []), 
             "error_message": users_data_from_backend.get("error"),
             "current_page": users_data_from_backend.get("current_page", page),
             "limit": users_data_from_backend.get("limit", limit),
