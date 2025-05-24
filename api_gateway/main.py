@@ -8,7 +8,7 @@ from config import settings
 
 app = FastAPI(title="API Gateway")
 
-DEFAULT_TIMEOUT = 60.0 # Tăng thời gian chờ lên 60 giây
+DEFAULT_TIMEOUT = 60.0
 
 async def forward_request(
     request: Request,
@@ -88,7 +88,6 @@ async def forward_request(
         except httpx.RequestError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Error connecting to service at {target_url}: {exc}")
 
-# --- User Service Routes ---
 @app.post("/auth/users/", tags=["User Service"])
 async def register_user(request: Request):
     json_data = await request.json()
@@ -111,12 +110,14 @@ async def get_current_user_details(request: Request):
         headers_to_fwd["Authorization"] = auth_header
     return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
 
-# --- Storage Service Routes ---
 @app.post("/storage/upload/file/", tags=["Storage Service"])
 async def proxy_upload_file_storage(request: Request):
     body_bytes = await request.body()
     content_type = request.headers.get("content-type") 
     headers_to_fwd = {"content-type": content_type} if content_type else {}
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
 
     target_url = f"{settings.STORAGE_SERVICE_URL}/upload/file/"
     return await forward_request(
@@ -130,14 +131,17 @@ async def proxy_upload_file_storage(request: Request):
 @app.get("/storage/files/{filename}", tags=["Storage Service"])
 async def proxy_get_file_storage(filename: str, request: Request):
     target_url = f"{settings.STORAGE_SERVICE_URL}/files/{filename}"
-    return await forward_request(request, target_url, "GET")
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
 
 
-# --- Admin Portal Backend Service Routes ---
 @app.get("/admin/users/", tags=["Admin Portal Backend Service"])
-async def proxy_admin_get_users(request: Request, skip: int = 0, limit: int = 100):
+async def proxy_admin_get_users(request: Request, page: int = 1, limit: int = 10):
     target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/users/"
-    params = {"skip": skip, "limit": limit}
+    params = {"page": page, "limit": limit}
     
     auth_header = request.headers.get("Authorization") 
     headers_to_fwd = {}
@@ -146,7 +150,6 @@ async def proxy_admin_get_users(request: Request, skip: int = 0, limit: int = 10
         
     return await forward_request(request, target_url, "GET", params=params, headers_to_forward=headers_to_fwd)
 
-# --- Generic OCR Service Routes ---
 @app.post("/ocr/image/", tags=["OCR Service"])
 async def proxy_ocr_image(
     request: Request,
@@ -187,8 +190,6 @@ async def proxy_ocr_languages(request: Request):
         headers_to_fwd["Authorization"] = auth_header
     return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
 
-
-# --- eKYC Information Extraction Service Routes --- 
 @app.post("/ekyc/extract_info/", tags=["eKYC Information Extraction Service"])
 async def proxy_ekyc_extract_info(request: Request):
     target_url = f"{settings.EKYC_INFO_EXTRACTION_SERVICE_URL}/extract_info/"

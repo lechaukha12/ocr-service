@@ -123,7 +123,7 @@ def clean_text_before_extraction(text: str) -> str:
     text = text.replace("l ", ": ") 
     return text.strip()
 
-def general_field_cleaner(value: Optional[str], field_name: Optional[str] = None) -> Optional[str]: # Thêm field_name
+def general_field_cleaner(value: Optional[str], field_name: Optional[str] = None) -> Optional[str]:
     if not value: return None
     value = value.replace('\n', ' ').strip()
     value = re.sub(r'\s*\-\s*¬?\s*$', '', value).strip() 
@@ -169,7 +169,7 @@ def post_process_address(address: Optional[str], field_name: str) -> Optional[st
     keywords_rgx_to_remove = KEYWORD_CONFIG.get(field_name, {}).get("keywords_rgx_for_cleaning", "")
     if keywords_rgx_to_remove:
         address = re.sub(rf"^\s*{keywords_rgx_to_remove}\s*[:\sƒlÍ.]*\s*", "", address, flags=re.IGNORECASE).strip()
-    address = general_field_cleaner(address, field_name) # Truyền field_name
+    address = general_field_cleaner(address, field_name)
     address = re.sub(r'\s*-\s*¬\s*$', '', address).strip()
     address = re.sub(r'\s*\^s*$', '', address).strip()
     address = re.sub(r'\s*a_—ẴẮ`\s*_—\.\s*r3\s*l\s*mẽ\s*$', '', address, flags=re.IGNORECASE).strip()
@@ -201,7 +201,7 @@ def extract_single_field_from_patterns(
                     if post_process_func:
                         value = post_process_func(value, field_name)
                     else: 
-                        value = general_field_cleaner(value, field_name) # <--- SỬA Ở ĐÂY
+                        value = general_field_cleaner(value, field_name)
                     return value if value else None 
         except IndexError:
             continue
@@ -377,7 +377,7 @@ async def extract_information_from_ocr(ocr_input: OCRInput = Body(...)):
                     processed_gemini_value = post_processor_for_gemini(str(gemini_value), field_key) 
                     extracted_data_regex[field_key] = processed_gemini_value
                 elif gemini_value is not None: 
-                    extracted_data_regex[field_key] = general_field_cleaner(str(gemini_value), field_key) # Truyền field_name
+                    extracted_data_regex[field_key] = general_field_cleaner(str(gemini_value), field_key)
                 elif extracted_data_regex.get(field_key) is None and gemini_value is None:
                      extracted_data_regex[field_key] = None
     
@@ -390,7 +390,7 @@ async def extract_information_from_ocr(ocr_input: OCRInput = Body(...)):
     
     if current_errors_regex:
         extracted_data_regex["errors"] = current_errors_regex
-    elif "errors" in extracted_data_regex and not current_errors_regex : # Xóa errors nếu không còn lỗi mới
+    elif "errors" in extracted_data_regex and not current_errors_regex :
          del extracted_data_regex["errors"]
 
     return ExtractedInfo(**extracted_data_regex)
@@ -398,4 +398,3 @@ async def extract_information_from_ocr(ocr_input: OCRInput = Body(...)):
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
 async def health_check():
     return {"status": "healthy", "message": "eKYC Information Extraction Service (Hybrid) is running!"}
-

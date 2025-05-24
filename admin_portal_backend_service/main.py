@@ -3,8 +3,9 @@ from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
 import httpx
 from typing import List, Optional, Any, Dict
-from pydantic import BaseModel
-from datetime import datetime # <--- THÊM DÒNG NÀY
+from pydantic import BaseModel, EmailStr 
+from datetime import datetime
+import math 
 
 from config import settings as backend_settings
 
@@ -14,15 +15,21 @@ DEFAULT_TIMEOUT = 10.0
 
 class User(BaseModel):
     id: int
-    email: str
+    email: EmailStr
     username: str
     is_active: bool
     created_at: Optional[datetime] = None
     full_name: Optional[str] = None
 
-
     class Config:
         from_attributes = True
+
+class UserPage(BaseModel):
+    items: List[User]
+    total: int
+    page: int
+    limit: int
+    pages: int
 
 
 async def get_current_admin_user(request: Request) -> Dict[str, Any]:
@@ -53,22 +60,27 @@ async def get_current_admin_user(request: Request) -> Dict[str, Any]:
                 detail="User does not have admin privileges"
             )
         
-        user_data = {"username": username, "roles": roles}
+        user_data = {"username": username, "roles": roles, "full_name": payload.get("full_name")}
         return user_data
         
     except JWTError:
         raise credentials_exception
 
 
-@app.get("/admin/users/", response_model=List[User], tags=["Admin - Users"])
+@app.get("/admin/users/", response_model=UserPage, tags=["Admin - Users"])
 async def get_all_users_from_user_service(
     request: Request,
-    skip: int = 0,
+    page: int = 1,
     limit: int = 10,
     current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
+    if page < 1: page = 1
+    if limit < 1: limit =1
+    skip = (page - 1) * limit
+    
     target_url = f"{backend_settings.USER_SERVICE_URL}/users/"
-    params = {"skip": skip, "limit": limit}
+    
+    params = {"skip": skip, "limit": limit} 
     
     client_headers = {
         "Authorization": request.headers.get("Authorization")
@@ -79,12 +91,10 @@ async def get_all_users_from_user_service(
             response = await client.get(target_url, params=params, headers=client_headers)
             response.raise_for_status()
             
-            users_data = response.json()
+            user_page_data_from_user_service = response.json()
             
-            validated_users = []
-            for user_item in users_data:
-                validated_users.append(User.model_validate(user_item))
-            return validated_users
+            validated_user_page = UserPage.model_validate(user_page_data_from_user_service)
+            return validated_user_page
 
         except httpx.HTTPStatusError as exc:
             error_detail = "Error from user service"
@@ -111,9 +121,8 @@ async def get_all_users_from_user_service(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
                 detail=f"Error connecting to User Service at {target_url}: {exc}"
             )
-        except Exception as e:
+        except Exception as e: 
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"An unexpected error occurred in Admin Portal: {str(e)}"
+                detail=f"An unexpected error occurred in Admin Portal or data validation failed: {str(e)}"
             )
-
