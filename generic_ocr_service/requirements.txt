@@ -1,7 +1,8 @@
 fastapi
 uvicorn[standard]
 python-multipart
-pytesseract
 Pillow
-opencv-python-headless 
+numpy<2.0
+opencv-python-headless
 pydantic-settings
+vietocr

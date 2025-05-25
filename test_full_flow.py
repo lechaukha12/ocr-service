@@ -121,28 +121,12 @@ def test_05_get_file_via_gateway(access_token: str, uploaded_filename_on_storage
         print(e)
     print("-" * 40)
 
-def test_06_ocr_get_languages_via_gateway(access_token: str):
-    print_section_header("API Gateway -> OCR Service: Get Available Languages")
+# test_06_ocr_get_languages_via_gateway đã bị xóa
+
+def test_07_ocr_image_via_gateway(access_token: str, image_path: str) -> Optional[Dict[str, Any]]: 
+    print_section_header(f"API Gateway -> OCR Service (VietOCR): OCR Image '{os.path.basename(image_path)}'")
     if not access_token: 
-        print("No access token provided for ocr_get_languages_via_gateway (if required by gateway).")
-
-    ocr_languages_url = f"{API_GATEWAY_URL}/ocr/languages/"
-    headers = {"Authorization": f"Bearer {access_token}"} 
-
-    try:
-        response = requests.get(ocr_languages_url, headers=headers)
-        print_response_details(response, f"Fetching OCR languages from {ocr_languages_url}...")
-        if response.status_code == 200:
-            return response.json()
-    except requests.exceptions.ConnectionError as e:
-        print(f"Could not connect to {ocr_languages_url}. Ensure API Gateway is running and the OCR route is configured.")
-        print(e)
-    return None
-
-def test_07_ocr_image_via_gateway(access_token: str, image_path: str, lang: str = "vie", psm_value: str = "3"): 
-    print_section_header(f"API Gateway -> OCR Service: OCR Image '{os.path.basename(image_path)}' with lang '{lang}' psm '{psm_value}'")
-    if not access_token: 
-        print("No access token provided for ocr_image_via_gateway (if required by gateway).")
+        print("No access token provided for ocr_image_via_gateway.")
         return None 
     
     if not os.path.exists(image_path):
@@ -151,13 +135,15 @@ def test_07_ocr_image_via_gateway(access_token: str, image_path: str, lang: str 
 
     ocr_image_url = f"{API_GATEWAY_URL}/ocr/image/"
     
+    # VietOCR endpoint không còn nhận `lang` và `psm`
     files_payload = {'file': (os.path.basename(image_path), open(image_path, 'rb'), 'image/jpeg')} 
-    data_payload = {'lang': lang, 'psm': psm_value} 
+    # data_payload không còn cần thiết cho lang và psm
     headers = {"Authorization": f"Bearer {access_token}"} 
 
     try:
-        response = requests.post(ocr_image_url, files=files_payload, data=data_payload, headers=headers)
-        print_response_details(response, f"Sending image to OCR at {ocr_image_url}...")
+        # Gửi request không có data_payload cho lang và psm
+        response = requests.post(ocr_image_url, files=files_payload, headers=headers)
+        print_response_details(response, f"Sending image to VietOCR at {ocr_image_url}...")
         if response.status_code == 200:
             return response.json()
     except requests.exceptions.ConnectionError as e:
@@ -185,7 +171,7 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
     }
     payload = {
         "ocr_text": ocr_text_sample,
-        "language": lang,
+        "language": lang, # Giữ lại lang ở đây vì eKYC service có thể vẫn dùng nó cho logic Gemini
         "use_gemini_fallback": use_gemini
     }
 
@@ -276,7 +262,7 @@ if __name__ == "__main__":
         else:
             print("File upload via gateway to Storage Service failed or was skipped for user.")
         
-        print("\n--- Generic OCR Service Tests (via API Gateway with User Token) ---")
+        print("\n--- Generic OCR Service Tests (VietOCR) (via API Gateway with User Token) ---")
         ocr_result_text_for_extraction = None 
         
         real_image_path = find_real_image(REAL_IMAGE_BASENAME)
@@ -285,23 +271,20 @@ if __name__ == "__main__":
             print(f"Không thể tìm thấy ảnh '{REAL_IMAGE_BASENAME}' để kiểm thử OCR. Vui lòng đặt ảnh vào cùng thư mục với script.")
             ocr_result_text_for_extraction = "Lỗi: Không tìm thấy ảnh để OCR. Họ và tên: Nguyễn Văn A. Số: 123456789."
         else:
-            ocr_languages = test_06_ocr_get_languages_via_gateway(user_token)
-            if ocr_languages:
-                print(f"Available OCR languages: {ocr_languages.get('available_languages')}")
-
-            print(f"\nSử dụng ảnh '{real_image_path}' cho OCR...")
-            psm_to_test = "3"
-            ocr_result_real_image_vie = test_07_ocr_image_via_gateway(user_token, real_image_path, lang="vie", psm_value=psm_to_test)
+            # test_06_ocr_get_languages_via_gateway is removed
+            print(f"\nSử dụng ảnh '{real_image_path}' cho VietOCR...")
+            ocr_result_real_image_vie = test_07_ocr_image_via_gateway(user_token, real_image_path) # lang và psm đã bị xóa
             
             if ocr_result_real_image_vie and ocr_result_real_image_vie.get("text"):
-                print(f"OCR Result (vie, psm={psm_to_test}) for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_real_image_vie.get('text')}\n---")
+                print(f"VietOCR Result for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_real_image_vie.get('text')}\n---")
                 ocr_result_text_for_extraction = ocr_result_real_image_vie.get("text") 
             else:
-                print(f"Không nhận được kết quả văn bản từ OCR cho ảnh '{os.path.basename(real_image_path)}' (lang: vie, psm={psm_to_test}).")
-                ocr_result_text_for_extraction = f"Lỗi OCR hoặc không có văn bản (vie, psm={psm_to_test})."
+                print(f"Không nhận được kết quả văn bản từ VietOCR cho ảnh '{os.path.basename(real_image_path)}'.")
+                ocr_result_text_for_extraction = f"Lỗi VietOCR hoặc không có văn bản."
         
         print("\n--- eKYC Information Extraction Service Tests (via API Gateway with User Token) ---")
         if ocr_result_text_for_extraction:
+            # Tham số `lang="vie"` vẫn được giữ lại cho ekyc service vì nó có thể dùng cho Gemini
             extracted_info_with_gemini = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie", use_gemini=True)
             if extracted_info_with_gemini:
                  print(f"Extracted Information (Gemini Fallback Enabled for user token run):")
@@ -311,4 +294,4 @@ if __name__ == "__main__":
 
     print("\nFull API Flow Tests Completed.")
     print("Ensure API Gateway is correctly configured for all service routes.")
-    print("Ensure all services (User, Storage, Generic OCR, eKYC Info Extraction, Admin Portal Backend) are running.")
+    print("Ensure all services (User, Storage, Generic OCR with VietOCR, eKYC Info Extraction, Admin Portal Backend) are running.")

@@ -1,57 +1,38 @@
+# Sử dụng một base image Python chính thức, ví dụ python:3.10-slim
 FROM python:3.10-slim
 
+# Thiết lập các biến môi trường để tối ưu hóa Python trong Docker
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Tạo thư mục làm việc bên trong container
 WORKDIR /app
 
-# Cài đặt các dependencies hệ thống cần thiết
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    tesseract-ocr-vie \
-    tesseract-ocr-osd \
-    libjpeg-dev \
-    zlib1g-dev \
-    libpng-dev \
-    libtiff-dev \
+# Cài đặt các thư viện hệ thống cần thiết cho OpenCV và các thư viện đồ họa khác
+# libgl1-mesa-glx cung cấp libGL.so.1
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    libglib2.0-0 \
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Kiểm tra Tesseract và các ngôn ngữ đã cài đặt từ command line (trong quá trình build)
-RUN echo "--- Tesseract Version (from command line during build) ---" && \
-    tesseract --version
+# Cài đặt PyTorch, Torchvision, và Torchaudio (phiên bản CPU) một cách tường minh
+# Luôn kiểm tra trang chủ PyTorch (pytorch.org/get-started/locally/) để có lệnh pip mới nhất cho CPU.
+# Sử dụng phiên bản không có "+cpu" trong tên version, --index-url sẽ lo việc chọn bản CPU.
+RUN pip install --no-cache-dir torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cpu
 
-RUN echo "--- Tesseract List Available Languages (from command line during build) ---" && \
-    tesseract --list-langs
+# Sao chép tệp requirements.txt vào trước để tận dụng Docker cache
+COPY ./requirements.txt /app/requirements.txt
 
-RUN echo "--- Listing contents of /usr/share/tesseract-ocr/4.00/tessdata/ (old path attempt) ---" && \
-    (ls -l /usr/share/tesseract-ocr/4.00/tessdata/ || echo "Path /usr/share/tesseract-ocr/4.00/tessdata not found or empty")
+# Cài đặt các phụ thuộc Python từ requirements.txt
+# (Lưu ý: torch, torchvision, torchaudio đã được cài ở bước trên,
+#  vietocr trong requirements.txt sẽ nhận diện chúng đã được cài đặt)
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-RUN echo "--- Listing contents of /usr/share/tessdata/ (previous path attempt) ---" && \
-    (ls -l /usr/share/tessdata/ || echo "Path /usr/share/tessdata not found or empty")
-
-RUN echo "--- Listing contents of /usr/share/tesseract-ocr/5/tessdata/ (confirmed path) ---" && \
-    (ls -l /usr/share/tesseract-ocr/5/tessdata/ || echo "Path /usr/share/tesseract-ocr/5/tessdata not found or empty")
-
-
-# Thiết lập biến môi trường TESSDATA_PREFIX dựa trên output của tesseract --list-langs
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
-
-# Sao chép file requirements.txt
-COPY requirements.txt /app/requirements.txt
-
-# Cài đặt các thư viện Python
-RUN pip install --no-cache-dir --trusted-host pypi.python.org -r /app/requirements.txt
-
-# Sao chép toàn bộ nội dung của thư mục context
+# Sao chép toàn bộ mã nguồn của ứng dụng vào thư mục làm việc
 COPY . /app/
 
 # Port mà ứng dụng FastAPI sẽ chạy bên trong container
 EXPOSE 8004
 
 # Lệnh để chạy ứng dụng khi container khởi động
-# Bây giờ check_tesseract.py sẽ sử dụng TESSDATA_PREFIX đúng
-CMD python /app/check_tesseract.py && \
-    echo "--- Attempting to run main.py directly (full version) ---" && \
-    python /app/main.py && \
-    echo "--- Attempting to start Uvicorn with trace log level (full main.py) ---" && \
-    uvicorn main:app --host 0.0.0.0 --port 8004 --log-level trace
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004", "--workers", "1"]
