@@ -14,82 +14,77 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
 
 1.  **User Service (`user_service`)**
     * **Mô tả**: Quản lý thông tin người dùng, bao gồm đăng ký, đăng nhập, xác thực token JWT.
-    * **Công nghệ**: FastAPI, SQLAlchemy (SQLite).
+    * **Công nghệ**: FastAPI, SQLAlchemy (SQLite), Passlib (bcrypt).
     * **Port**: `8001`
-    * **Tình trạng**: **Hoàn thành và Đã tích hợp**. Đã kiểm thử thành công qua API Gateway, bao gồm đăng ký, đăng nhập, lấy thông tin user, và hỗ trợ phân trang cho Admin Portal.
+    * **Tình trạng**: **Hoạt động**. Đã kiểm thử thành công qua API Gateway. Có một cảnh báo nhỏ không nghiêm trọng liên quan đến `bcrypt` khi `passlib` cố gắng đọc thông tin phiên bản (lỗi `AttributeError: module 'bcrypt' has no attribute '__about__'`), tuy nhiên chức năng hash và xác minh mật khẩu vẫn hoạt động. Cần xem xét lại `requirements.txt` để `passlib` tự quản lý phiên bản `bcrypt`.
 
 2.  **API Gateway (`api_gateway`)**
     * **Mô tả**: Điểm vào duy nhất cho client, điều hướng request đến các microservices phù hợp.
     * **Công nghệ**: FastAPI, HTTPX.
     * **Port**: `8000`
-    * **Tình trạng**: **Hoàn thành và Đã tích hợp**. Đã kiểm thử điều phối request thành công đến các dịch vụ User, Storage, Generic OCR, và eKYC Information Extraction.
+    * **Tình trạng**: **Hoạt động**. Đã kiểm thử điều phối request thành công đến các dịch vụ User, Storage, Generic OCR, và eKYC Information Extraction.
 
 3.  **Storage Service (`storage_service`)**
     * **Mô tả**: Lưu trữ và quản lý các file được upload.
-    * **Công nghệ**: FastAPI.
+    * **Công nghệ**: FastAPI, AIOFiles.
     * **Port**: `8003`
-    * **Tình trạng**: **Hoàn thành và Đã tích hợp**. Đã kiểm thử upload và download file thành công qua API Gateway.
+    * **Tình trạng**: **Hoạt động**. Đã kiểm thử upload và download file thành công qua API Gateway.
 
 4.  **Generic OCR Service (`generic_ocr_service`)**
     * **Mô tả**: Thực hiện nhận dạng ký tự quang học (OCR) trên ảnh được cung cấp.
-    * **Công nghệ**: FastAPI, **VietOCR (sử dụng PyTorch, OpenCV)**.
+    * **Công nghệ hiện tại**: FastAPI, **PaddleOCR** (sử dụng `lang='vi'` với các model mặc định như `PP-OCRv5_mobile_det` và `PP-OCRv5_mobile_rec`). Đã có nỗ lực tích hợp VietOCR (model `vgg_seq2seq` với file weights `seq2seqocr.pth`) theo "Lựa chọn C" - một hướng tiếp cận hybrid.
     * **Port**: `8004`
-    * **Tình trạng**: **Đang gặp sự cố và cần gỡ lỗi.**
-        * Đã chuyển từ Tesseract sang VietOCR để cải thiện chất lượng nhận dạng tiếng Việt.
-        * Service khởi động và load model VietOCR (`vgg_transformer` trên CPU) thành công.
-        * **Sự cố hiện tại**: Service bị crash (ngắt kết nối không phản hồi khi API Gateway gọi tới) khi xử lý yêu cầu OCR ảnh (cụ thể là tại bước `predictor.predict()` bên trong VietOCR), ngay cả khi ảnh đã được resize. Nguyên nhân nghi ngờ nhất là do hết bộ nhớ (Out of Memory) hoặc lỗi ở tầng C/C++ của thư viện nền khi xử lý ảnh lớn/phức tạp, mặc dù RAM cho Docker đã được người dùng tăng lên 12GB.
-        * Cần tiếp tục gỡ lỗi bằng cách thử nghiệm với ảnh nhỏ hơn, đơn giản hơn, theo dõi chặt chẽ tài nguyên container và các log chi tiết đã thêm vào.
+    * **Tình trạng**:
+        * **PaddleOCR hoạt động và trả về kết quả OCR**: Service khởi động thành công với PaddleOCR. Khi nhận ảnh, service trả về `Status Code: 200 OK` và một chuỗi văn bản đã được OCR. Kết quả này đã có nội dung chữ, không còn là chuỗi rỗng.
+        * **Chất lượng dấu tiếng Việt (PaddleOCR)**: Kết quả OCR từ model PaddleOCR mobile mặc định cho thấy nhiều từ tiếng Việt (đặc biệt là chữ IN HOA) bị mất dấu hoặc nhận dạng dấu chưa chính xác, mặc dù một số từ có dấu vẫn được giữ lại.
+        * **VietOCR và "Lựa chọn C" (Hybrid OCR - Tích hợp chưa hoàn tất)**:
+            * **Mô tả "Lựa chọn C"**: Đây là một hướng tiếp cận hybrid được đề xuất với mục tiêu cải thiện chất lượng nhận dạng dấu tiếng Việt. Quy trình dự kiến bao gồm:
+                1. PaddleOCR (`lang='vi'`) thực hiện OCR toàn bộ ảnh để lấy văn bản và tọa độ các vùng chữ (bounding box).
+                2. Các vùng chữ quan trọng (Regions of Interest - ROI), đặc biệt là những vùng cần độ chính xác cao về dấu tiếng Việt (ví dụ: tên riêng, địa danh), sẽ được xác định từ kết quả của PaddleOCR.
+                3. Các ROI này sau đó sẽ được "warp" (cắt và chỉnh sửa phối cảnh dựa trên tọa độ box) và đưa qua VietOCR (sử dụng model `vgg_seq2seq` với file weights `seq2seqocr.pth` do người dùng cung cấp) để nhận dạng lại.
+                4. Kết quả từ VietOCR sẽ được dùng để thay thế hoặc bổ sung cho kết quả của PaddleOCR tại các ROI tương ứng, với kỳ vọng VietOCR sẽ cho kết quả dấu tốt hơn cho các vùng này.
+            * **Hiện trạng tích hợp VietOCR**: Mặc dù mã nguồn `main.py` đã bao gồm logic để khởi tạo cả PaddleOCR và VietOCR, và file model `seq2seqocr.pth` đã được copy vào Docker image, log khởi động của service **không cho thấy bất kỳ dấu hiệu nào của việc VietOCR được khởi tạo thành công** (không có log "Lifespan: Attempting to load VietOCR model..." hay các log liên quan khác được ghi nhận trong các lần kiểm tra gần nhất). Do đó, phần xử lý hybrid sử dụng VietOCR trong endpoint `/ocr/image/` chưa được kích hoạt và thử nghiệm đầy đủ. Một lỗi `ValueError: The truth value of an array with more than one element is ambiguous...` cũng đã xuất hiện trong phần code chuẩn bị cho việc xử lý ROI bằng VietOCR (cụ thể là dòng `if should_refine_with_vietocr and box_coordinates:`), cho thấy logic kiểm tra `box_coordinates` cần được sửa nếu tiếp tục hướng này.
+        * **Tạm dừng phát triển hướng Hybrid OCR (PaddleOCR + VietOCR)**: Do gặp khó khăn trong việc xác nhận VietOCR khởi tạo thành công và các lỗi phát sinh, hướng tiếp cận này tạm thời được dừng lại. Service hiện tại hoạt động dựa trên PaddleOCR.
 
 5.  **eKYC Information Extraction Service (`ekyc_information_extraction_service`)**
     * **Mô tả**: Trích xuất thông tin có cấu trúc (Họ tên, Ngày sinh, Số CMND/CCCD, Địa chỉ, v.v.) từ kết quả OCR của giấy tờ tùy thân. Sử dụng phương pháp hybrid: ban đầu dùng regex, sau đó có thể fallback hoặc cải thiện bằng Google Gemini LLM nếu cần và được cấu hình.
     * **Công nghệ**: FastAPI, Python (cho regex), Google Generative AI SDK.
     * **Port**: `8005`
-    * **Tình trạng**: **Đang phát triển - Phiên bản hybrid ban đầu đã tích hợp.** Hiệu quả hiện tại bị giới hạn nghiêm trọng bởi chất lượng và tính ổn định của đầu vào từ `generic-ocr-service`. Cần tinh chỉnh regex và prompt Gemini khi có kết quả OCR tốt và ổn định hơn.
+    * **Tình trạng**:
+        * **Hoạt động dựa trên output của PaddleOCR**: Service nhận text từ `generic-ocr-service` và đã có thể trích xuất được nhiều trường thông tin cơ bản (Số ID, Họ tên, Ngày sinh, Giới tính, Ngày hết hạn) mà không còn báo lỗi `errors` nghiêm trọng.
+        * **Cần tinh chỉnh Regex**: Các trường như Quốc tịch (`nationality`), Quê quán (`place_of_origin`), Nơi thường trú (`place_of_residence`) vẫn còn bị trích xuất lộn xộn và chứa thông tin thừa. Cần cải thiện các biểu thức chính quy (regex) để phù hợp hơn với định dạng output hiện tại của PaddleOCR.
+        * **Chất lượng trích xuất phụ thuộc OCR**: Độ chính xác của việc trích xuất vẫn bị ảnh hưởng bởi chất lượng dấu tiếng Việt từ đầu vào OCR.
 
 6.  **Admin Portal Frontend (`admin_portal_frontend`)**
-    * **Mô tả**: Giao diện web cho quản trị viên để xem danh sách người dùng và có thể là các thông tin quản trị khác.
+    * **Mô tả**: Giao diện web cho quản trị viên để xem danh sách người dùng.
     * **Công nghệ**: FastAPI (với Jinja2 templates), HTML, CSS.
     * **Port**: `8080`
-    * **Tình trạng**: **Hoàn thiện cơ bản.** Đã có giao diện login (xác thực với User Service qua API Gateway) và hiển thị danh sách người dùng với phân trang chi tiết (lấy từ Admin Portal Backend Service qua API Gateway).
+    * **Tình trạng**: **Hoàn thiện cơ bản**. Đã có giao diện login và hiển thị danh sách người dùng với phân trang.
 
 7.  **Admin Portal Backend Service (`admin_portal_backend_service`)**
-    * **Mô tả**: Service backend cung cấp API cho Admin Portal Frontend, bao gồm xác thực admin và lấy dữ liệu từ User Service.
+    * **Mô tả**: Service backend cung cấp API cho Admin Portal Frontend.
     * **Công nghệ**: FastAPI.
     * **Port**: `8002`
-    * **Tình trạng**: **Hoàn thiện cơ bản.** Đã có API lấy danh sách user (yêu cầu xác thực admin) với thông tin phân trang đầy đủ.
+    * **Tình trạng**: **Hoàn thiện cơ bản**. Đã có API lấy danh sách user.
 
-8.  **Face Detection Service (`face_detection_service`)**
-    * **Mô tả**: Phát hiện khuôn mặt trong ảnh (ví dụ: ảnh chân dung, ảnh trên giấy tờ tùy thân).
-    * **Công nghệ**: FastAPI, các thư viện nhận dạng khuôn mặt (ví dụ: OpenCV, MTCNN).
-    * **Port**: (Chưa xác định)
-    * **Tình trạng**: **Kế hoạch**
-
-9.  **Face Comparison Service (`face_comparison_service`)** (Hoặc là một phần của Face Recognition Service)
-    * **Mô tả**: So sánh hai khuôn mặt để xác định mức độ tương đồng (ví dụ: so sánh ảnh chân dung với ảnh trên giấy tờ tùy thân).
-    * **Công nghệ**: FastAPI, các thư viện nhận dạng khuôn mặt (ví dụ: face_recognition, DeepFace, ArcFace).
-    * **Port**: (Chưa xác định)
-    * **Tình trạng**: **Kế hoạch**
-
-10. **Liveness Service (`liveness_service`)**
-    * **Mô tả**: Xác định xem ảnh/video chân dung đầu vào có phải là từ một người thật, đang hiện diện hay không, nhằm chống giả mạo (ví dụ: dùng ảnh in, video phát lại).
-    * **Công nghệ**: FastAPI, các kỹ thuật AI/ML cho liveness detection.
-    * **Port**: (Chưa xác định)
-    * **Tình trạng**: **Kế hoạch**
+8.  **Face Detection Service (`face_detection_service`)**: Kế hoạch.
+9.  **Face Comparison Service (`face_comparison_service`)**: Kế hoạch.
+10. **Liveness Service (`liveness_service`)**: Kế hoạch.
 
 ## Thiết lập và Chạy Dự án
 
 1.  **Yêu cầu**:
     * Docker
     * Docker Compose
-    * (Tùy chọn, nếu sử dụng Gemini) API Key từ Google AI Studio, được cấu hình trong tệp `.env`.
-
-2.  **Các bước chạy**:
-    * Clone repository (nếu có).
-    * Đặt các file của từng service vào đúng cấu trúc thư mục như đã thiết kế.
-    * Tạo tệp `.env` ở thư mục gốc của dự án (cùng cấp với `docker-compose.yml`) nếu muốn sử dụng Gemini, và thêm vào đó:
+    * (Tùy chọn, nếu sử dụng Gemini fallback trong `ekyc_information_extraction_service`) API Key từ Google AI Studio, được cấu hình trong tệp `.env` ở thư mục gốc dự án:
         ```
         GEMINI_API_KEY=your_actual_google_ai_studio_api_key
         ```
+
+2.  **Các bước chạy**:
+    * Clone repository (nếu có).
+    * Đặt các file của từng service vào đúng cấu trúc thư mục.
+    * (Nếu đã từng cấu hình cho VietOCR) Đảm bảo file model `seq2seqocr.pth` được đặt tại `ocr-service/generic_ocr_service/model/seq2seqocr.pth` (mặc dù hiện tại VietOCR chưa được kích hoạt).
     * Từ thư mục gốc của dự án (chứa file `docker-compose.yml`), chạy lệnh:
         ```bash
         docker-compose up -d --build
@@ -98,50 +93,34 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
 
 ## Kịch bản Kiểm thử Toàn bộ Luồng
 
-* Một script `test_full_flow.py` đã được tạo và sử dụng để kiểm thử tự động các luồng chính của hệ thống:
-    1.  Đăng ký người dùng mới (User Service).
-    2.  Đăng nhập để lấy token (User Service).
-    3.  Lấy thông tin người dùng hiện tại (User Service).
-    4.  Upload file (Storage Service).
-    5.  Tải file về (Storage Service).
-    6.  Thực hiện OCR ảnh (Generic OCR Service - hiện đang sử dụng VietOCR).
-    7.  Gửi kết quả OCR đến dịch vụ trích xuất thông tin eKYC (eKYC Information Extraction Service) và nhận lại thông tin đã trích xuất (có thể sử dụng Gemini fallback).
-* **Lưu ý**: Bước OCR (số 6) hiện đang gặp sự cố. `generic-ocr-service` (sử dụng VietOCR) khởi động và load model thành công nhưng bị crash khi xử lý yêu cầu OCR ảnh thực tế, ngay cả khi ảnh đã được resize. Điều này khiến API Gateway trả về lỗi 503 cho client.
+* Một script `test_full_flow.py` được sử dụng để kiểm thử tự động các luồng chính của hệ thống.
+* Hiện tại, script này cho thấy `generic-ocr-service` (sử dụng PaddleOCR) trả về kết quả text, và `ekyc_information_extraction_service` có thể trích xuất một phần thông tin từ đó.
 
-## Tình trạng Dự án Hiện tại (Tính đến 25/05/2025)
+## Tình trạng Dự án Hiện tại (Tính đến 27/05/2025)
 
-* **Hoàn thành cơ bản và Tích hợp**:
-    * User Service (bao gồm xác thực JWT, phân trang).
+* **Các thành phần hoạt động tốt**:
+    * User Service (với cảnh báo nhỏ về bcrypt).
     * Storage Service.
     * API Gateway.
-    * Admin Portal Frontend & Backend Service (hiển thị danh sách người dùng với phân trang).
-    * Container hóa toàn bộ các service trên bằng Docker và Docker Compose.
-    * Kịch bản test tự động cho luồng tích hợp (ngoại trừ bước OCR đang lỗi).
-    * `ekyc_information_extraction_service`: Phiên bản Hybrid ban đầu (Regex + tùy chọn Gemini fallback).
-* **Đang phát triển và cần hoàn thiện/gỡ lỗi**:
-    * **`generic_ocr_service`**: Đã chuyển sang sử dụng VietOCR. Service khởi động và load model (`vgg_transformer`) thành công. Tuy nhiên, đang gặp sự cố **crash khi gọi hàm `predict()`** trên ảnh (ngay cả khi ảnh đã được resize xuống 1024px). Nghi ngờ chính là do hết bộ nhớ (Out of Memory) hoặc lỗi ở tầng C/C++ của thư viện nền khi xử lý ảnh đầu vào (đặc biệt là ảnh lớn/phức tạp ban đầu như `IMG_4620.png`). Mặc dù RAM Docker đã được tăng lên 12GB, sự cố vẫn xảy ra. **Cần ưu tiên gỡ lỗi và ổn định service này.**
-    * **`ekyc_information_extraction_service`**: Hiệu quả trích xuất phụ thuộc lớn vào kết quả OCR. Sẽ tiếp tục cải thiện khi `generic-ocr-service` ổn định và cung cấp OCR tốt hơn.
-* **Ưu tiên tiếp theo**:
-    1.  **Gỡ lỗi và Ổn định `generic-ocr-service` (VietOCR)**:
-        * **Xác định và giải quyết nguyên nhân crash khi gọi hàm `predict()`**. Thử nghiệm với các ảnh có kích thước/độ phức tạp khác nhau (bắt đầu với ảnh rất nhỏ, đơn giản).
-        * Theo dõi sát sao tài nguyên (CPU, RAM) của container `generic-ocr-service` trong quá trình xử lý ảnh bằng `docker stats`.
-        * Nếu OOM là nguyên nhân, xem xét tối ưu hóa việc sử dụng bộ nhớ hoặc chọn model VietOCR nhẹ hơn nếu có.
-    2.  **Nâng cao chất lượng Trích xuất thông tin**: Sau khi có OCR tốt, tập trung cải thiện `ekyc_information_extraction_service`.
-    3.  Hoàn thiện các chức năng còn lại của Admin Portal.
-    4.  Bắt đầu phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt.
+    * Admin Portal Frontend & Backend Service.
+    * `generic-ocr-service` sử dụng **PaddleOCR** đã có thể xử lý ảnh và trả về văn bản OCR.
+    * `ekyc_information_extraction_service` đã có thể trích xuất các trường cơ bản từ kết quả của PaddleOCR.
 
-## Các Bước Phát triển Tiếp theo (Dự kiến)
+* **Các vấn đề cần giải quyết và cải thiện**:
+    1.  **Chất lượng dấu tiếng Việt của `generic-ocr-service` (PaddleOCR)**: Model PaddleOCR mobile mặc định (`PP-OCRv5_mobile_rec`) cho kết quả nhận dạng dấu tiếng Việt chưa cao, đặc biệt với chữ IN HOA.
+    2.  **Độ chính xác trích xuất thông tin của `ekyc_information_extraction_service`**: Cần tinh chỉnh lại các biểu thức chính quy (regex) để phù hợp hơn với output thực tế từ PaddleOCR, đặc biệt cho các trường phức tạp như địa chỉ, quốc tịch.
+    3.  **VietOCR trong `generic-ocr-service`**: Việc khởi tạo VietOCR chưa thành công (không có log xác nhận trong các lần kiểm tra gần nhất). Hướng hybrid (PaddleOCR + VietOCR, hay "Lựa chọn C") tạm dừng để tập trung vào các giải pháp khác hoặc gỡ lỗi VietOCR một cách triệt để hơn.
+    4.  **Cảnh báo `bcrypt` trong `user-service`**: Cần xem xét lại `requirements.txt` của `user-service`.
 
-1.  **Ổn định và Tối ưu `generic_ocr_service` (VietOCR)**: Đây là ưu tiên hàng đầu.
-2.  **Nâng cao `ekyc_information_extraction_service`**:
-    * Phát triển bộ regex toàn diện hơn. Tinh chỉnh prompt và logic xử lý kết quả từ Gemini để đạt độ chính xác cao nhất. Xây dựng bộ dữ liệu kiểm thử đa dạng.
-3.  **Hoàn thiện Admin Portal**:
-    * Frontend: Thêm các chức năng quản lý, tìm kiếm, phân trang chi tiết cho danh sách người dùng. Giao diện xem chi tiết một eKYC request.
-    * Backend: Mở rộng API để hỗ trợ các chức năng quản trị mới.
-4.  **Phát triển các Dịch vụ Nhận dạng Khuôn mặt**:
-    * `Face Detection Service`: Phát hiện khuôn mặt trong ảnh.
-    * `Face Comparison Service`: So sánh độ tương đồng giữa hai khuôn mặt.
-    * `Liveness Service`: Chống giả mạo.
-5.  **Hoàn thiện Luồng eKYC End-to-End**: Kết hợp tất cả các service để tạo thành một quy trình eKYC hoàn chỉnh từ lúc người dùng upload ảnh đến khi có kết quả xác minh.
-6.  **Tài liệu hóa API**: Sử dụng Swagger/OpenAPI UI được cung cấp bởi FastAPI cho từng service và cho API Gateway.
-7.  **Tối ưu và Bảo mật**: Rà soát, tối ưu hiệu năng và tăng cường các biện pháp bảo mật cho toàn hệ thống.
+* **Hướng tham khảo (đã tạm dừng)**:
+    * Đã xem xét project `Vietnamese-CitizenID-Recognition` trên GitHub (do người dùng cung cấp file `Extractor.py` và `requirements.txt`). Project này sử dụng kết hợp PaddleOCR (`lang='en'` cho detection) và VietOCR (model `vgg_seq2seq` với file weights `seq2seqocr.pth` cho recognition tiếng Việt).
+
+## Ưu tiên Tiếp theo
+
+1.  **Cải thiện chất lượng nhận dạng dấu tiếng Việt của `generic-ocr-service`**:
+    * **Ưu tiên**: xem xét lại các engine OCR khác (ví dụ: Tesseract) nếu có đánh giá tốt về chất lượng dấu tiếng Việt cho loại ảnh CCCD và dễ tích hợp hơn.
+2.  **Tinh chỉnh Regex trong `ekyc_information_extraction_service`**: Dựa trên output ổn định nhất có thể đạt được từ `generic-ocr-service`, tối ưu hóa lại các biểu thức chính quy.
+3.  **(Tùy chọn, nếu quyết định quay lại)** **Gỡ lỗi khởi tạo VietOCR**: Nếu vẫn muốn theo đuổi giải pháp hybrid "Lựa chọn C", cần tìm ra nguyên nhân VietOCR không hiển thị log khởi tạo trong `generic-ocr-service` và giải quyết các lỗi phát sinh (như `ValueError` đã thấy).
+4.  **Giải quyết cảnh báo `bcrypt`** trong `user-service`.
+5.  **Phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt** theo kế hoạch.
+
