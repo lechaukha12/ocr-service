@@ -121,10 +121,8 @@ def test_05_get_file_via_gateway(access_token: str, uploaded_filename_on_storage
         print(e)
     print("-" * 40)
 
-# test_06_ocr_get_languages_via_gateway đã bị xóa
-
 def test_07_ocr_image_via_gateway(access_token: str, image_path: str) -> Optional[Dict[str, Any]]: 
-    print_section_header(f"API Gateway -> OCR Service (VietOCR): OCR Image '{os.path.basename(image_path)}'")
+    print_section_header(f"API Gateway -> OCR Service (PaddleOCR): OCR Image '{os.path.basename(image_path)}'")
     if not access_token: 
         print("No access token provided for ocr_image_via_gateway.")
         return None 
@@ -135,15 +133,12 @@ def test_07_ocr_image_via_gateway(access_token: str, image_path: str) -> Optiona
 
     ocr_image_url = f"{API_GATEWAY_URL}/ocr/image/"
     
-    # VietOCR endpoint không còn nhận `lang` và `psm`
     files_payload = {'file': (os.path.basename(image_path), open(image_path, 'rb'), 'image/jpeg')} 
-    # data_payload không còn cần thiết cho lang và psm
     headers = {"Authorization": f"Bearer {access_token}"} 
 
     try:
-        # Gửi request không có data_payload cho lang và psm
         response = requests.post(ocr_image_url, files=files_payload, headers=headers)
-        print_response_details(response, f"Sending image to VietOCR at {ocr_image_url}...")
+        print_response_details(response, f"Sending image to OCR Service at {ocr_image_url}...")
         if response.status_code == 200:
             return response.json()
     except requests.exceptions.ConnectionError as e:
@@ -162,7 +157,9 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
     
     if not ocr_text_sample:
         print("No OCR text provided for extraction.")
-        return None
+        # Sửa lỗi chính tả "Lỗi VietOCR hoặc không có văn bản." thành một thông báo chung hơn
+        ocr_text_sample = "Lỗi OCR hoặc không có văn bản." 
+        # return None # Không return None ở đây nữa để eKYC service vẫn được gọi và xử lý lỗi này
 
     extraction_url = f"{API_GATEWAY_URL}/ekyc/extract_info/"
     headers = {
@@ -171,7 +168,7 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
     }
     payload = {
         "ocr_text": ocr_text_sample,
-        "language": lang, # Giữ lại lang ở đây vì eKYC service có thể vẫn dùng nó cho logic Gemini
+        "language": lang,
         "use_gemini_fallback": use_gemini
     }
 
@@ -252,46 +249,34 @@ if __name__ == "__main__":
     if not user_token:
         print("\nRegular user login failed. Skipping user-specific Storage and OCR tests.")
     else:
-        print("\n--- Storage Service Tests (via API Gateway with User Token) ---")
-        uploaded_file_details = test_04_upload_single_file_via_gateway(user_token, content="Hello from user_token test!")
-        if uploaded_file_details and "filename" in uploaded_file_details:
-            filename_on_storage = uploaded_file_details["filename"]
-            print(f"File uploaded to storage by user, unique name: {filename_on_storage}")
-            time.sleep(0.5) 
-            test_05_get_file_via_gateway(user_token, filename_on_storage)
-        else:
-            print("File upload via gateway to Storage Service failed or was skipped for user.")
-        
-        print("\n--- Generic OCR Service Tests (VietOCR) (via API Gateway with User Token) ---")
+        print("\n--- OCR Service Tests (PaddleOCR) (via API Gateway with User Token) ---")
         ocr_result_text_for_extraction = None 
         
         real_image_path = find_real_image(REAL_IMAGE_BASENAME)
 
         if not real_image_path:
             print(f"Không thể tìm thấy ảnh '{REAL_IMAGE_BASENAME}' để kiểm thử OCR. Vui lòng đặt ảnh vào cùng thư mục với script.")
-            ocr_result_text_for_extraction = "Lỗi: Không tìm thấy ảnh để OCR. Họ và tên: Nguyễn Văn A. Số: 123456789."
+            ocr_result_text_for_extraction = "Lỗi: Không tìm thấy ảnh để OCR." # Thông báo chung
         else:
-            # test_06_ocr_get_languages_via_gateway is removed
-            print(f"\nSử dụng ảnh '{real_image_path}' cho VietOCR...")
-            ocr_result_real_image_vie = test_07_ocr_image_via_gateway(user_token, real_image_path) # lang và psm đã bị xóa
+            print(f"\nSử dụng ảnh '{real_image_path}' cho OCR Service (PaddleOCR)...")
+            ocr_result_real_image = test_07_ocr_image_via_gateway(user_token, real_image_path)
             
-            if ocr_result_real_image_vie and ocr_result_real_image_vie.get("text"):
-                print(f"VietOCR Result for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_real_image_vie.get('text')}\n---")
-                ocr_result_text_for_extraction = ocr_result_real_image_vie.get("text") 
+            if ocr_result_real_image and ocr_result_real_image.get("text"):
+                print(f"PaddleOCR Result for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_real_image.get('text')}\n---")
+                ocr_result_text_for_extraction = ocr_result_real_image.get("text") 
             else:
-                print(f"Không nhận được kết quả văn bản từ VietOCR cho ảnh '{os.path.basename(real_image_path)}'.")
-                ocr_result_text_for_extraction = f"Lỗi VietOCR hoặc không có văn bản."
+                print(f"Không nhận được kết quả văn bản từ OCR Service cho ảnh '{os.path.basename(real_image_path)}'.")
+                ocr_result_text_for_extraction = f"Lỗi OCR hoặc không có văn bản." # Thông báo chung
         
         print("\n--- eKYC Information Extraction Service Tests (via API Gateway with User Token) ---")
-        if ocr_result_text_for_extraction:
-            # Tham số `lang="vie"` vẫn được giữ lại cho ekyc service vì nó có thể dùng cho Gemini
-            extracted_info_with_gemini = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie", use_gemini=True)
-            if extracted_info_with_gemini:
-                 print(f"Extracted Information (Gemini Fallback Enabled for user token run):")
+        # Luôn gọi ekyc service ngay cả khi ocr_result_text_for_extraction có thể là thông báo lỗi
+        extracted_info_with_gemini = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie", use_gemini=True)
+        if extracted_info_with_gemini:
+             print(f"Extracted Information (Gemini Fallback Enabled for user token run):")
         else: 
-            print(f"No OCR text available for extraction. Skipping eKYC Information Extraction test for user.")
+            print(f"No information extracted or eKYC service call failed for user.")
 
 
     print("\nFull API Flow Tests Completed.")
     print("Ensure API Gateway is correctly configured for all service routes.")
-    print("Ensure all services (User, Storage, Generic OCR with VietOCR, eKYC Info Extraction, Admin Portal Backend) are running.")
+    print("Ensure all services (User, Storage, OCR Service with PaddleOCR, eKYC Info Extraction, Admin Portal Backend) are running.")

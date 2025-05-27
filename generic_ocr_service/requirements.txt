@@ -3,6 +3,10 @@ uvicorn[standard]
 python-multipart
 Pillow
 numpy<2.0
-opencv-python-headless
-pydantic-settings
-vietocr
+# opencv-python-headless # PaddleOCR thường tự cài đặt opencv phù hợp
+paddleocr>=2.7.0 # Hoặc phiên bản mới nhất bạn muốn dùng
+paddlepaddle>=2.6.0 # Hoặc phiên bản CPU mới nhất, đảm bảo tương thích với paddleocr
+# Bỏ các thư viện liên quan đến VietOCR và Tesseract nếu có
+# vietocr
+# torch
+# torchvision
