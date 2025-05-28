@@ -1,5 +1,337 @@
 /* admin_portal_frontend/static/css/style.css */
 
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+:root {
+    --primary-color: #3B82F6; /* Blue 500 */
+    --primary-color-darker: #2563EB; /* Blue 600 for hover/active */
+    --primary-color-focus-ring: rgba(59, 130, 246, 0.5); /* primary-color with alpha for focus ring */
+
+    --secondary-color: #93C5FD; /* Blue 300 for lighter elements */
+    
+    --page-background-color: #F3F4F6; /* Gray 100 */
+    --content-background-color: #FFFFFF; /* White */
+    
+    --sidebar-background-color: #1F2937; /* Gray 800 */
+    --sidebar-text-color: #D1D5DB; /* Gray 300 */
+    --sidebar-text-hover-color: #FFFFFF; /* White */
+    --sidebar-link-hover-bg-color: #374151; /* Gray 700 */
+    --sidebar-active-link-bg-color: var(--primary-color);
+    --sidebar-active-link-text-color: var(--text-on-primary-bg-color);
+    
+    --text-primary-color: #1F2937; /* Gray 800 */
+    --text-secondary-color: #6B7280; /* Gray 500 */
+    --text-on-primary-bg-color: #FFFFFF; /* White */
+    --text-placeholder-color: #9CA3AF; /* Gray 400 */
+
+    --border-color-light: #E5E7EB; /* Gray 200 */
+    --border-color-medium: #D1D5DB; /* Gray 300 */
+    --input-border-color: var(--border-color-medium);
+    --input-focus-border-color: var(--primary-color);
+    --input-focus-ring-color: var(--primary-color-focus-ring);
+
+    --error-bg-color: #FEE2E2; /* Red 100 */
+    --error-border-color: #FCA5A5; /* Red 300 */
+    --error-text-color: #B91C1C; /* Red 700 - was DC2626 (Red 600), 700 has better contrast on Red 100 */
+
+    --table-header-bg-color: #F9FAFB; /* Gray 50 */
+    --table-header-text-color: var(--text-secondary-color);
+    --table-border-color: var(--border-color-light);
+    --table-row-hover-bg-color: #F9FAFB; /* Gray 50 for hover on rows */
+    
+    --status-active-bg-color: #D1FAE5; /* Green 100 */
+    --status-active-text-color: #065F46; /* Green 800 */
+    --status-inactive-bg-color: #FEE2E2; /* Red 100 */
+    --status-inactive-text-color: #991B1B; /* Red 800 */
+    
+    --pagination-link-hover-bg-color: #EFF6FF; /* Blue 50 */
+    --pagination-link-disabled-text-color: #9CA3AF; /* Gray 400 */
+    --pagination-link-disabled-bg-color: #F3F4F6; /* Gray 100 */
+
+    /* General UI element properties */
+    --border-radius-sm: 0.25rem; /* 4px */
+    --border-radius-md: 0.375rem; /* 6px */
+    --border-radius-lg: 0.5rem; /* 8px */
+    --box-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --box-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --box-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --focus-ring-width: 3px;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--page-background-color);
+    color: var(--text-primary-color);
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+    font-size: 16px; /* Base font size */
+}
+
+/* Dashboard Layout Styles */
+.sidebar {
+    background-color: var(--sidebar-background-color);
+    color: var(--sidebar-text-color);
+    width: 260px;
+    transition: transform 0.3s ease-in-out;
+}
+.sidebar-title { color: var(--text-on-primary-bg-color); }
+.main-content { transition: margin-left 0.3s ease-in-out; }
+
+@media (max-width: 768px) { /* md breakpoint */
+    .sidebar { position: fixed; height: 100%; z-index: 40; }
+    .sidebar.open { transform: translateX(0); }
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius-md);
+    color: var(--sidebar-text-color);
+    transition: background-color 0.2s, color 0.2s;
+}
+.nav-link:hover {
+    background-color: var(--sidebar-link-hover-bg-color);
+    color: var(--sidebar-text-hover-color);
+}
+.nav-link.active {
+    background-color: var(--sidebar-active-link-bg-color);
+    color: var(--sidebar-active-link-text-color);
+    font-weight: 600;
+}
+.nav-link i { margin-right: 0.75rem; width: 1.25rem; text-align: center; }
+.nav-link-logout:hover {
+    background-color: var(--error-bg-color) !important;
+    color: var(--error-text-color) !important;
+}
+
+.header-bar { background-color: var(--content-background-color); color: var(--text-primary-color); }
+.header-title { color: var(--text-primary-color); }
+.hamburger-icon { color: var(--text-secondary-color); }
+.hamburger-icon:hover { color: var(--text-primary-color); }
+.user-greeting { color: var(--text-secondary-color); }
+.main-area-bg { background-color: var(--page-background-color); }
+
+/* Login Page Specific Styles (can be refactored if these elements are used elsewhere) */
+.login-page-body { min-height: 100vh; background-color: var(--page-background-color); }
+.login-card {
+    background-color: var(--content-background-color);
+    padding: 2rem; /* 32px */
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--box-shadow-lg);
+    color: var(--text-primary-color);
+}
+.login-icon { color: var(--primary-color); }
+.login-title { color: var(--text-primary-color); font-size: 1.5rem; /* 24px */ font-weight: 700; }
+.login-subtitle { color: var(--text-secondary-color); font-size: 1rem; /* 16px */ }
+.footer-text { color: var(--text-secondary-color); font-size: 0.875rem; /* 14px */ }
+
+
+/* Forms and Buttons Styles */
+.form-label {
+    color: var(--text-primary-color);
+    font-weight: 500; /* medium */
+    font-size: 0.875rem; /* 14px */
+    display: block; /* Ensures it takes full width and margin-bottom works */
+    margin-bottom: 0.25rem; /* 4px */
+}
+
+.form-input {
+    display: block;
+    width: 100%; /* Ensure it takes full width of parent */
+    padding: 0.625rem 1rem; /* 10px 16px for a ~40px height with 16px font */
+    font-size: 1rem; /* 16px */
+    font-family: 'Roboto', sans-serif;
+    color: var(--text-primary-color);
+    background-color: var(--content-background-color);
+    border: 1px solid var(--input-border-color);
+    border-radius: var(--border-radius-md);
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.form-input::placeholder {
+    color: var(--text-placeholder-color);
+    opacity: 1; /* Browsers often apply opacity, ensure it's what we want */
+}
+.form-input:focus {
+    outline: none;
+    border-color: var(--input-focus-border-color);
+    box-shadow: 0 0 0 var(--focus-ring-width) var(--input-focus-ring-color);
+}
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover,
+.form-input:-webkit-autofill:focus,
+.form-input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--content-background-color) inset !important;
+    -webkit-text-fill-color: var(--text-primary-color) !important;
+    border-color: var(--input-border-color); /* Keep border consistent */
+}
+.form-input:-webkit-autofill:focus {
+    border-color: var(--input-focus-border-color); /* Apply focus border on autofill focus */
+}
+
+
+/* Base button style (optional, can be extended) */
+.button {
+    display: inline-flex; /* Allows icon alignment */
+    align-items: center;
+    justify-content: center;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500; /* medium */
+    font-size: 0.875rem; /* 14px */
+    padding: 0.625rem 1rem; /* 10px 16px, for ~40px height */
+    border-radius: var(--border-radius-md);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    text-align: center;
+    white-space: nowrap; /* Prevent text wrapping */
+}
+.button i {
+    margin-right: 0.5rem; /* Space between icon and text */
+}
+.button:focus {
+    outline: none;
+    box-shadow: 0 0 0 var(--focus-ring-width) var(--primary-color-focus-ring);
+}
+
+/* Primary Button (e.g., .submit-button) */
+.submit-button, .button-primary {
+    background-color: var(--primary-color);
+    color: var(--text-on-primary-bg-color);
+    border-color: var(--primary-color); /* Ensure border matches for consistency */
+}
+.submit-button:hover, .button-primary:hover {
+    background-color: var(--primary-color-darker);
+    border-color: var(--primary-color-darker);
+}
+.submit-button:focus, .button-primary:focus {
+    background-color: var(--primary-color-darker); /* Darken on focus as well */
+    border-color: var(--primary-color-darker);
+    /* box-shadow is handled by .button:focus */
+}
+.submit-button:active, .button-primary:active {
+    background-color: var(--primary-color-darker); /* Usually same as hover or slightly darker */
+    border-color: var(--primary-color-darker);
+    box-shadow: none; /* Optional: remove shadow on active click */
+}
+
+
+.error-message {
+    background-color: var(--error-bg-color);
+    border: 1px solid var(--error-border-color);
+    color: var(--error-text-color);
+    padding: 0.75rem 1rem; /* 12px 16px */
+    border-radius: var(--border-radius-md);
+    font-size: 0.875rem; /* 14px */
+    /* margin-bottom is applied via Tailwind in the template */
+}
+.error-message strong {
+    font-weight: 500; /* medium */
+}
+
+
+/* Content Card */
+.content-card {
+    background-color: var(--content-background-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--box-shadow-md);
+}
+.card-title {
+    color: var(--text-primary-color);
+    font-weight: 600; /* semibold */
+    font-size: 1.25rem; /* 20px */
+}
+
+/* User List Table Styles */
+.table-container {
+    border: 1px solid var(--table-border-color);
+    border-radius: var(--border-radius-md);
+    overflow: hidden; /* Ensures inner elements respect border radius */
+}
+.data-table { width: 100%; border-collapse: collapse; }
+.table-header-group {
+    background-color: var(--table-header-bg-color);
+    border-bottom: 1px solid var(--table-border-color);
+}
+.table-header {
+    color: var(--table-header-text-color);
+    font-weight: 500; /* medium */
+    white-space: nowrap;
+    font-size: 0.75rem; /* 12px */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    /* Padding is applied via Tailwind in template */
+}
+.table-body { background-color: var(--content-background-color); }
+.table-row {
+    border-bottom: 1px solid var(--table-border-color);
+    transition: background-color 0.15s ease-in-out;
+}
+.table-row:last-child { border-bottom: none; }
+.table-row:hover { background-color: var(--table-row-hover-bg-color); }
+.table-cell {
+    color: var(--text-secondary-color);
+    font-size: 0.875rem; /* 14px */
+    /* Padding & whitespace applied via Tailwind */
+}
+.table-cell.font-medium { color: var(--text-primary-color); font-weight: 500; }
+
+.status-badge {
+    padding: 0.2em 0.6em;
+    font-size: 0.75rem; /* 12px */
+    line-height: 1.25rem; /* 20px */
+    font-weight: 600;
+    border-radius: var(--border-radius-lg); /* More pill-like */
+    display: inline-flex;
+    align-items: center;
+    text-transform: capitalize;
+}
+.status-active { background-color: var(--status-active-bg-color); color: var(--status-active-text-color); }
+.status-inactive { background-color: var(--status-inactive-bg-color); color: var(--status-inactive-text-color); }
+
+/* Pagination Styles */
+.pagination-container { border-top: 1px solid var(--table-border-color); }
+.pagination-info { color: var(--text-secondary-color); font-size: 0.875rem; /* 14px */ }
+.pagination-info .font-medium { color: var(--text-primary-color); font-weight: 500; }
+
+.pagination-link {
+    border: 1px solid var(--border-color-medium);
+    background-color: var(--content-background-color);
+    color: var(--text-primary-color);
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, color 0.15s ease-in-out;
+    font-size: 0.875rem; /* 14px */
+    /* Padding and layout applied via Tailwind */
+}
+.pagination-link:hover {
+    background-color: var(--pagination-link-hover-bg-color);
+    border-color: var(--secondary-color);
+    color: var(--primary-color);
+}
+.pagination-link-active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--text-on-primary-bg-color);
+}
+.pagination-link-active:hover {
+    background-color: var(--primary-color-darker);
+    border-color: var(--primary-color-darker);
+    color: var(--text-on-primary-bg-color);
+}
+.pagination-link-disabled {
+    background-color: var(--pagination-link-disabled-bg-color);
+    border-color: var(--border-color-medium);
+    color: var(--pagination-link-disabled-text-color);
+    cursor: not-allowed;
+}
+.pagination-link-disabled span.relative.inline-flex { /* For "..." */
+     border: 1px solid var(--border-color-medium);
+     background-color: var(--content-background-color);
+     color: var(--text-secondary-color);
+}
+
+.empty-table-message { color: var(--text-secondary-color); }
+
 /* Thêm các CSS tùy chỉnh chung của bạn ở đây nếu cần. */
 /* Ví dụ:
 body {
