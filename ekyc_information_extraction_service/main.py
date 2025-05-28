@@ -15,8 +15,7 @@ VIETNAMESE_LOWER_CHARS = "a-zàáạảãâầấậẩẫăằắặẳẵèé�
 DIGITS = "0-9"
 SPACE_CHAR = " " 
 
-# Sửa NAME_CHARS_FOR_REGEX_SET: escape dấu gạch nối
-NAME_CHARS_FOR_REGEX_SET = VIETNAMESE_UPPER_CHARS + VIETNAMESE_LOWER_CHARS + "'.`" + SPACE_CHAR + "\\-" 
+NAME_CHARS_FOR_REGEX_SET = VIETNAMESE_UPPER_CHARS + VIETNAMESE_LOWER_CHARS + "'.`" + SPACE_CHAR + "-"
 
 ADDRESS_CHARS_FOR_REGEX_SET = VIETNAMESE_UPPER_CHARS + VIETNAMESE_LOWER_CHARS + DIGITS + ".,/:()" + SPACE_CHAR + "\\-"
 ID_NUMBER_CHARS_FOR_REGEX_SET = DIGITS + SPACE_CHAR 
@@ -247,7 +246,6 @@ EXTRACTION_PATTERNS: Dict[str, List[Any]] = {
         (r"(?:\n|^)\s*([0-9\s]{{8}}[0-9])\s*(?:\n|$)", 1)
     ],
     "full_name": [
-        # Sửa pattern: sử dụng (?:[{NAME_CHARS_FOR_REGEX_SET}]|\n) để cho phép ký tự tên HOẶC newline
         rf"{NAME_KWS_RGX}\s*[:ƒ]?\s*((?:[{NAME_CHARS_FOR_REGEX_SET}]|\n)+?)(?=\n\s*(?:{DOB_KWS_RGX}|{SEX_KWS_RGX}|{NAT_KWS_RGX})|\n\n|$)",
     ],
     "date_of_birth": [
