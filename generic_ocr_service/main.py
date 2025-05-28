@@ -1,279 +1,200 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, status
+import asyncio
+from fastapi import FastAPI, File, UploadFile, HTTPException, status, Form
 from fastapi.responses import JSONResponse
-from PIL import Image, ImageDraw
+from PIL import Image
 import io
-import numpy as np
-from contextlib import asynccontextmanager
+import base64
 import logging
-import traceback
-import os
-import cv2
+import httpx 
+from typing import Optional, List, Dict, Any
 
-from paddleocr import PaddleOCR
-from vietocr.tool.predictor import Predictor as VietOCRPredictor
-from vietocr.tool.config import Cfg as VietOCRConfig
+# Import settings từ config.py mới
+from config import settings as service_settings
 
+# === Cấu hình Logging ===
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-paddle_ocr_instance = None
-viet_ocr_predictor_instance = None
+app = FastAPI(title="Generic OCR Service (Gemini Edition)")
 
-VIETOCR_MODEL_PATH = "/app/model/seq2seqocr.pth"
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Generic OCR Service (Gemini Edition) is starting up.")
+    if not service_settings.OCR_GEMINI_API_KEY or service_settings.OCR_GEMINI_API_KEY == "YOUR_OCR_GEMINI_API_KEY_HERE":
+        logger.warning("OCR_GEMINI_API_KEY is not configured or using placeholder value. Calls to Gemini API may fail.")
+    else:
+        logger.info("OCR_GEMINI_API_KEY is configured.")
 
-def warp_and_prepare_for_vietocr(original_pil_image: Image.Image, box_coords) -> Image.Image | None:
-    try:
-        frame_cv = np.array(original_pil_image.convert('RGB')) 
-        
-        if not (isinstance(box_coords, list) and len(box_coords) == 4 and \
-                all(isinstance(pt, (list, np.ndarray, tuple)) and len(pt) == 2 for pt in box_coords)):
-            logger.warning(f"Invalid box_coords structure for warping: {box_coords}")
-            return None
 
-        pt_A = (float(box_coords[0][0]), float(box_coords[0][1]))
-        pt_D = (float(box_coords[1][0]), float(box_coords[1][1]))
-        pt_C = (float(box_coords[2][0]), float(box_coords[2][1]))
-        pt_B = (float(box_coords[3][0]), float(box_coords[3][1]))
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Generic OCR Service (Gemini Edition) is shutting down.")
 
-        width_AD = np.sqrt(((pt_A[0] - pt_D[0]) ** 2) + ((pt_A[1] - pt_D[1]) ** 2))
-        width_BC = np.sqrt(((pt_B[0] - pt_C[0]) ** 2) + ((pt_B[1] - pt_C[1]) ** 2))
-        maxWidth = max(int(width_AD), int(width_BC))
-
-        height_AB = np.sqrt(((pt_A[0] - pt_B[0]) ** 2) + ((pt_A[1] - pt_B[1]) ** 2))
-        height_CD = np.sqrt(((pt_C[0] - pt_D[0]) ** 2) + ((pt_C[1] - pt_D[1]) ** 2))
-        maxHeight = max(int(height_AB), int(height_CD))
-
-        if maxWidth <= 0 or maxHeight <= 0:
-            logger.warning(f"Invalid maxWidth or maxHeight for warping: {maxWidth}, {maxHeight} from box {box_coords}")
-            return None
-
-        input_pts = np.float32([pt_A, pt_B, pt_C, pt_D])
-        output_pts = np.float32([[0, 0],
-                                [0, maxHeight - 1],
-                                [maxWidth - 1, maxHeight - 1],
-                                [maxWidth - 1, 0]])
-
-        M = cv2.getPerspectiveTransform(input_pts, output_pts)
-        matWarped_cv = cv2.warpPerspective(frame_cv, M, (maxWidth, maxHeight), flags=cv2.INTER_LINEAR)
-        
-        img_warped_pil = Image.fromarray(cv2.cvtColor(matWarped_cv, cv2.COLOR_BGR2RGB))
-        return img_warped_pil
-
-    except Exception as e:
-        logger.error(f"Error during warping image for VietOCR: {e}", exc_info=True)
+async def count_gemini_tokens_http(parts: List[Dict[str, Any]], model_name: str = "gemini-2.0-flash") -> Optional[int]:
+    """
+    Đếm số token cho một nội dung nhất định bằng cách gọi API countTokens của Gemini.
+    """
+    if not service_settings.OCR_GEMINI_API_KEY or service_settings.OCR_GEMINI_API_KEY == "YOUR_OCR_GEMINI_API_KEY_HERE":
+        logger.error("Cannot count tokens: OCR_GEMINI_API_KEY is not configured correctly.")
         return None
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global paddle_ocr_instance, viet_ocr_predictor_instance
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:countTokens?key={service_settings.OCR_GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": parts}]}
     
-    logger.info("Lifespan: Initializing PaddleOCR...")
     try:
-        paddle_ocr_instance = PaddleOCR(use_angle_cls=False, lang='vi')
-        logger.info("Lifespan: PaddleOCR instance created successfully.")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(api_url, json=payload, headers={'Content-Type': 'application/json'})
+            response.raise_for_status()
+            result = response.json()
+            total_tokens = result.get("totalTokens")
+            if total_tokens is not None:
+                logger.info(f"Token count for model {model_name} with {len(parts)} part(s): {total_tokens} tokens.")
+                return total_tokens
+            else:
+                logger.error(f"Could not get totalTokens from Gemini countTokens API response: {result}")
+                return None
+    except httpx.HTTPStatusError as e:
+        error_body = "N/A"
+        try: 
+            error_body = e.response.json()
+        except: 
+            pass # Giữ error_body là "N/A" nếu không parse được JSON
+        logger.error(f"HTTP error calling Gemini countTokens API: {e.response.status_code} - {error_body}", exc_info=True)
+        return None
     except Exception as e:
-        logger.error(f"Lifespan: Fatal - Error initializing PaddleOCR: {e}", exc_info=True)
-        paddle_ocr_instance = None
+        logger.error(f"Unexpected error in count_gemini_tokens_http: {e}", exc_info=True)
+        return None
 
-    logger.info("Lifespan: Attempting to load VietOCR model (vgg_seq2seq)...")
+async def ocr_with_gemini(image_bytes: bytes, filename: str) -> str:
     try:
-        logger.info(f"Checking for VietOCR model at: {VIETOCR_MODEL_PATH}")
-        if not os.path.exists(VIETOCR_MODEL_PATH):
-            logger.error(f"VietOCR weights file NOT FOUND at {VIETOCR_MODEL_PATH}! VietOCR will not be initialized.")
-            viet_ocr_predictor_instance = None
-        else:
-            logger.info(f"VietOCR weights file found at {VIETOCR_MODEL_PATH}.")
-            config = VietOCRConfig.load_config_from_name('vgg_seq2seq')
-            logger.info("VietOCR config 'vgg_seq2seq' loaded.")
-            config['weights'] = VIETOCR_MODEL_PATH
-            config['cnn']['pretrained'] = False
-            config['device'] = 'cpu' 
-            config['predictor']['beamsearch'] = False
-            logger.info("VietOCR config prepared. Initializing VietOCR predictor...")
-            viet_ocr_predictor_instance = VietOCRPredictor(config)
-            logger.info("Lifespan: VietOCR instance (vgg_seq2seq) created successfully.")
-    except Exception as e:
-        logger.error(f"Lifespan: Fatal - Error initializing VietOCR: {e}", exc_info=True)
-        viet_ocr_predictor_instance = None
+        base64_image_data = base64.b64encode(image_bytes).decode('utf-8')
         
-    yield
-    
-    logger.info("Lifespan: Generic OCR Service (Hybrid) shutting down.")
-    paddle_ocr_instance = None
-    viet_ocr_predictor_instance = None
+        mime_type = "image/jpeg" 
+        if filename:
+            ext = filename.split('.')[-1].lower()
+            if ext == "png": mime_type = "image/png"
+            elif ext in ["jpg", "jpeg"]: mime_type = "image/jpeg"
 
-app = FastAPI(title="Generic OCR Service (Hybrid - PaddleOCR + VietOCR)", lifespan=lifespan)
+        logger.info(f"Preparing to call Gemini for image: {filename}, mime_type: {mime_type}")
+
+        prompt_text = "Trích xuất toàn bộ văn bản từ hình ảnh này. Chỉ trả về phần văn bản thuần túy, không có giải thích hay định dạng markdown."
+
+        input_parts_for_gemini = [
+            {"text": prompt_text},
+            {
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": base64_image_data
+                }
+            }
+        ]
+
+        input_tokens = await count_gemini_tokens_http(input_parts_for_gemini, model_name="gemini-2.0-flash")
+        if input_tokens is not None:
+            logger.info(f"Estimated INPUT tokens for Gemini OCR (gemini-2.0-flash): {input_tokens}")
+
+        payload = {
+            "contents": [{"parts": input_parts_for_gemini}],
+            "generationConfig": { "temperature": 0.2 }
+        }
+        
+        if not service_settings.OCR_GEMINI_API_KEY or service_settings.OCR_GEMINI_API_KEY == "YOUR_OCR_GEMINI_API_KEY_HERE":
+            logger.error("OCR_GEMINI_API_KEY is not configured correctly. Cannot call Gemini API.")
+            return "Lỗi: OCR_GEMINI_API_KEY chưa được cấu hình trong service."
+
+        api_url_generate = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={service_settings.OCR_GEMINI_API_KEY}"
+
+        async with httpx.AsyncClient(timeout=60.0) as client: 
+            logger.info(f"Calling Gemini generateContent API...")
+            response = await client.post(api_url_generate, json=payload, headers={'Content-Type': 'application/json'})
+            response.raise_for_status() 
+            
+            result = response.json()
+            logger.debug(f"Gemini API raw response: {result}")
+
+            if (result.get("candidates") and 
+                result["candidates"][0].get("content") and
+                result["candidates"][0]["content"].get("parts") and
+                len(result["candidates"][0]["content"]["parts"]) > 0 and
+                result["candidates"][0]["content"]["parts"][0].get("text")):
+                
+                extracted_text = result["candidates"][0]["content"]["parts"][0]["text"]
+                logger.info(f"Text extracted successfully by Gemini for {filename}. Length: {len(extracted_text)}")
+
+                output_parts_for_gemini = [{"text": extracted_text}]
+                output_tokens = await count_gemini_tokens_http(output_parts_for_gemini, model_name="gemini-2.0-flash")
+                if output_tokens is not None:
+                    logger.info(f"Estimated OUTPUT tokens for Gemini OCR (gemini-2.0-flash): {output_tokens}")
+                if input_tokens is not None and output_tokens is not None:
+                    logger.info(f"Estimated TOTAL tokens for this OCR request: {input_tokens + output_tokens}")
+
+                return extracted_text.strip()
+            else:
+                logger.error(f"Gemini API response structure unexpected or content missing for {filename}. Response: {result}")
+                error_reason = result.get("promptFeedback", {}).get("blockReason", {}).get("reason", "Unknown error from Gemini")
+                if not result.get("candidates"): error_reason = "No candidates in response."
+                return f"Lỗi: Gemini không trả về văn bản. Lý do: {error_reason}"
+
+    except httpx.HTTPStatusError as e:
+        error_body = "N/A"
+        try: 
+            error_body = e.response.json()
+        except: 
+            pass # Sửa lỗi cú pháp ở đây
+        logger.error(f"HTTP error calling Gemini API for {filename}: {e.response.status_code} - {error_body}", exc_info=True)
+        return f"Lỗi: Gọi Gemini API thất bại. Status: {e.response.status_code}. Chi tiết: {error_body}"
+    except Exception as e:
+        logger.error(f"Unexpected error during OCR with Gemini for {filename}: {e}", exc_info=True)
+        return f"Lỗi không xác định khi thực hiện OCR với Gemini: {str(e)}"
 
 @app.post("/ocr/image/", tags=["OCR"])
-async def ocr_image(
-    file: UploadFile = File(...)
+async def ocr_image_endpoint(
+    file: UploadFile = File(...),
+    lang: Optional[str] = Form(None), 
+    psm: Optional[str] = Form(None)   
 ):
-    global paddle_ocr_instance, viet_ocr_predictor_instance
-
-    if paddle_ocr_instance is None:
-        logger.error("OCR endpoint: PaddleOCR model is not available.")
-        if viet_ocr_predictor_instance is None:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="CRITICAL: Both PaddleOCR and VietOCR models are not available."
-            )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="PaddleOCR model not available, cannot proceed with primary OCR."
-        )
-
+    logger.info(f"Received OCR request for file: {file.filename}. Lang (ignored): {lang}, PSM (ignored): {psm}")
+    
     if not file.content_type or not file.content_type.startswith("image/"):
-        logger.warning(f"OCR endpoint: Unsupported media type: {file.content_type} for file: {file.filename}")
+        logger.warning(f"Unsupported media type: {file.content_type} for file: {file.filename}")
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported media type.")
 
-    filename_for_log = file.filename if file.filename else "unknown_file"
-    
     try:
         image_bytes = await file.read()
         if not image_bytes:
-            logger.warning(f"OCR endpoint: Received empty file: {filename_for_log}")
+            logger.warning(f"Received empty file: {file.filename}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
-
-        img_pil_original = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        
-        MAX_DIMENSION = 2048
-        img_pil_for_paddle = img_pil_original.copy()
-        if img_pil_for_paddle.width > MAX_DIMENSION or img_pil_for_paddle.height > MAX_DIMENSION:
-            img_pil_for_paddle.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.Resampling.LANCZOS)
-            logger.info(f"OCR endpoint: Image for PaddleOCR resized to: {img_pil_for_paddle.size}")
-
-        image_np_rgb = np.array(img_pil_for_paddle)
-        image_np_bgr = image_np_rgb[:, :, ::-1] 
-
-        paddle_ocr_lines_data = []
-        
-        logger.info(f"OCR endpoint: Processing with PaddleOCR for file: {filename_for_log}")
         try:
-            paddle_raw_result = paddle_ocr_instance.ocr(image_np_bgr)
-            logger.info(f"PADDLEOCR RAW RESULT for {filename_for_log}: {str(paddle_raw_result)[:1500]}...")
+            img_pil = Image.open(io.BytesIO(image_bytes))
+            img_pil.verify() 
+        except Exception as img_err:
+            logger.error(f"Invalid image file provided: {file.filename}, error: {img_err}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image file: {img_err}")
 
-            if paddle_raw_result and len(paddle_raw_result) > 0 and paddle_raw_result[0] is not None:
-                ocr_output_data = paddle_raw_result[0]
-
-                if isinstance(ocr_output_data, dict):
-                    logger.info(f"PaddleOCR output is a dictionary. Keys: {list(ocr_output_data.keys())}")
-                    if 'rec_texts' in ocr_output_data and isinstance(ocr_output_data['rec_texts'], list) and \
-                       'dt_polys' in ocr_output_data and isinstance(ocr_output_data['dt_polys'], list):
-                        
-                        texts = ocr_output_data['rec_texts']
-                        boxes = ocr_output_data['dt_polys']
-                        scores = ocr_output_data.get('rec_scores', [None] * len(texts)) 
-
-                        if len(texts) == len(boxes):
-                            for i, text_line in enumerate(texts):
-                                if isinstance(text_line, str):
-                                    paddle_ocr_lines_data.append({
-                                        "box": boxes[i], 
-                                        "text_paddle": text_line,
-                                        "text_final": text_line, 
-                                        "score_paddle": scores[i] if i < len(scores) else None
-                                    })
-                            logger.info(f"Processed {len(paddle_ocr_lines_data)} lines from PaddleOCR (dict output 'rec_texts' & 'dt_polys').")
-                        else:
-                            logger.warning("Mismatch in lengths of 'rec_texts' and 'dt_polys' from PaddleOCR dict.")
-                    else:
-                        logger.warning("PaddleOCR output is a dict but 'rec_texts' or 'dt_polys' key is missing, not a list, or structure is unexpected.")
-                
-                elif isinstance(ocr_output_data, list): 
-                    logger.info("PaddleOCR output is a list of lines. Processing standard format.")
-                    for line_info in ocr_output_data: 
-                        if isinstance(line_info, list) and len(line_info) == 2 and \
-                           isinstance(line_info[0], list) and \
-                           isinstance(line_info[1], tuple) and len(line_info[1]) >= 1 and \
-                           isinstance(line_info[1][0], str):
-                            box_coords = line_info[0] 
-                            text = line_info[1][0]
-                            score = line_info[1][1] if len(line_info[1]) > 1 else None
-                            paddle_ocr_lines_data.append({
-                                "box": box_coords,
-                                "text_paddle": text,
-                                "text_final": text, 
-                                "score_paddle": score
-                            })
-                        else:
-                            logger.warning(f"Unexpected line_info structure in PaddleOCR list output: {str(line_info)[:100]}")
-                else:
-                    logger.warning(f"PaddleOCR output (result[0]) is neither a dict nor a list. Type: {type(ocr_output_data)}")
-            
-            if not paddle_ocr_lines_data:
-                 logger.warning(f"No text lines extracted by PaddleOCR for {filename_for_log}. Check RAW RESULT log.")
-
-        except Exception as predict_err:
-            logger.error(f"OCR endpoint: EXCEPTION during PaddleOCR for file {filename_for_log}", exc_info=True)
-            pass 
-
-        if viet_ocr_predictor_instance and paddle_ocr_lines_data:
-            logger.info(f"Attempting to refine {len(paddle_ocr_lines_data)} lines with VietOCR...")
-            for i, line_data in enumerate(paddle_ocr_lines_data):
-                box_coordinates = line_data.get("box")
-                paddle_text = line_data.get("text_paddle", "")
-                
-                should_refine_with_vietocr = True 
-
-                # SỬA LỖI ValueError:
-                if should_refine_with_vietocr and box_coordinates is not None and len(box_coordinates) > 0:
-                    img_roi_pil_warped = warp_and_prepare_for_vietocr(img_pil_original, box_coordinates)
-                    
-                    if img_roi_pil_warped:
-                        try:
-                            vietocr_text_roi = viet_ocr_predictor_instance.predict(img_roi_pil_warped)
-                            logger.info(f"Line {i}, Paddle: '{paddle_text}', VietOCR_ROI: '{vietocr_text_roi}'")
-                            if vietocr_text_roi and isinstance(vietocr_text_roi, str) and len(vietocr_text_roi.strip()) > 0:
-                                paddle_ocr_lines_data[i]["text_final"] = vietocr_text_roi.strip() 
-                                paddle_ocr_lines_data[i]["refined_by_vietocr"] = True
-                        except Exception as e_vietocr:
-                            logger.error(f"Error during VietOCR predict for ROI {i}: {e_vietocr}", exc_info=False) 
-                    else:
-                        logger.warning(f"Failed to warp ROI {i} for VietOCR.")
-        elif not viet_ocr_predictor_instance:
-            logger.warning("VietOCR instance not available, skipping refinement step.")
-        elif not paddle_ocr_lines_data:
-            logger.warning("No lines from PaddleOCR to refine with VietOCR.")
-
-
-        final_text_list = [line.get("text_final", "") for line in paddle_ocr_lines_data]
-        final_text_combined = "\n".join(final_text_list).strip()
-        
-        logger.info(f"Hybrid OCR processing complete. Final text length: {len(final_text_combined)}")
+        ocr_text_result = await ocr_with_gemini(image_bytes, file.filename)
 
         return JSONResponse(content={
-            "filename": filename_for_log, 
-            "text": final_text_combined,
-            })
+            "filename": file.filename,
+            "text": ocr_text_result 
+        })
 
-    except HTTPException as e:
-        logger.error(f"OCR endpoint: HTTPException occurred for file {filename_for_log}: {e.detail}", exc_info=True)
+    except HTTPException as e: 
         raise e
     except Exception as e:
-        logger.error(f"OCR endpoint: Critical error during processing for file {filename_for_log}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {type(e).__name__} - {str(e)}"
-        )
+        logger.error(f"Error processing OCR request for file {file.filename}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
     finally:
-        if file and hasattr(file, 'close'):
-             try:
-                 await file.close()
-             except Exception as e_close:
-                 logger.warning(f"OCR endpoint: Error closing file {filename_for_log}: {e_close}")
+        if file:
+            await file.close()
 
+@app.get("/ocr/languages/", tags=["OCR Info"])
+async def get_supported_languages():
+    return {"languages": ["auto"], "message": "Gemini API auto-detects language or can be guided by prompt."} 
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])
 async def health_check():
-    global paddle_ocr_instance, viet_ocr_predictor_instance
-    status_paddle = "OK" if paddle_ocr_instance else "Not loaded"
-    status_vietocr = "OK" if viet_ocr_predictor_instance else "Not loaded"
-    
-    if paddle_ocr_instance and viet_ocr_predictor_instance:
-        return {"status": "healthy", "message": f"Hybrid OCR Service: PaddleOCR ({status_paddle}), VietOCR ({status_vietocr}). Both ready."}
-    elif paddle_ocr_instance:
-        return {"status": "partially_healthy", "message": f"Hybrid OCR Service: PaddleOCR ({status_paddle}), VietOCR ({status_vietocr}). VietOCR failed to load."}
-    elif viet_ocr_predictor_instance:
-        return {"status": "partially_healthy", "message": f"Hybrid OCR Service: PaddleOCR ({status_paddle}), VietOCR ({status_vietocr}). PaddleOCR failed to load."}
+    api_key_configured = service_settings.OCR_GEMINI_API_KEY and service_settings.OCR_GEMINI_API_KEY != "YOUR_OCR_GEMINI_API_KEY_HERE"
+    if api_key_configured:
+        return {"status": "healthy", "message": "Generic OCR Service (Gemini Edition) is running and API key is configured."}
     else:
-        return {"status": "unhealthy", "message": "Hybrid OCR Service: Both PaddleOCR and VietOCR failed to load."}
+        return {"status": "unhealthy", "message": "Generic OCR Service (Gemini Edition) is running BUT OCR_GEMINI_API_KEY is NOT configured."}

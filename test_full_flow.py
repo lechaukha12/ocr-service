@@ -18,7 +18,7 @@ def print_response_details(response: requests.Response, message: str = ""):
     try:
         print(f"Response JSON: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
     except json.JSONDecodeError:
-        print(f"Response Text: {response.text[:1000]}...") 
+        print(f"Response Text (first 1000 chars): {response.text[:1000]}...") 
     print("-" * 40)
 
 def generate_unique_user_data() -> Dict[str, str]:
@@ -72,57 +72,8 @@ def test_03_get_current_user_me(access_token: str) -> Optional[Dict[str, Any]]:
         return response.json()
     return None
 
-def test_04_upload_single_file_via_gateway(access_token: str, filename: str = "test_gateway_upload.txt", content: str = "Hello Gateway Storage!") -> Optional[Dict[str, Any]]:
-    print_section_header("API Gateway -> Storage Service: Upload Single File")
-    if not access_token:
-        print("No access token provided for upload_single_file_via_gateway.")
-        return None
-
-    storage_upload_url = f"{API_GATEWAY_URL}/storage/upload/file/"
-    
-    files_payload = {'file': (filename, content.encode('utf-8'), 'text/plain')} 
-
-    headers = {"Authorization": f"Bearer {access_token}"} 
-
-    try:
-        response = requests.post(storage_upload_url, files=files_payload, headers=headers)
-        print_response_details(response, f"Uploading file to {storage_upload_url}...")
-        if response.status_code == 200: 
-            return response.json()
-    except requests.exceptions.ConnectionError as e:
-        print(f"Could not connect to {storage_upload_url}. Ensure API Gateway is running and the route is configured.")
-        print(e)
-    return None
-
-def test_05_get_file_via_gateway(access_token: str, uploaded_filename_on_storage: str):
-    print_section_header("API Gateway -> Storage Service: Get File")
-    if not access_token:
-        print("No access token provided for get_file_via_gateway.")
-        return
-    if not uploaded_filename_on_storage:
-        print("No uploaded_filename_on_storage provided.")
-        return
-
-    storage_get_file_url = f"{API_GATEWAY_URL}/storage/files/{uploaded_filename_on_storage}"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    try:
-        response = requests.get(storage_get_file_url, headers=headers)
-        if response.status_code == 200:
-            print(f"Content-Type: {response.headers.get('content-type')}")
-            print(f"Content length: {len(response.content)}")
-            if "text" in response.headers.get('content-type', ""):
-                 print(f"File content (first 100 chars if text): {response.text[:100]}")
-            else:
-                print("File content is binary or not text.")
-        else:
-            print_response_details(response) 
-    except requests.exceptions.ConnectionError as e:
-        print(f"Could not connect to {storage_get_file_url}. Ensure API Gateway is running and the route is configured.")
-        print(e)
-    print("-" * 40)
-
 def test_07_ocr_image_via_gateway(access_token: str, image_path: str) -> Optional[Dict[str, Any]]: 
-    print_section_header(f"API Gateway -> OCR Service (PaddleOCR): OCR Image '{os.path.basename(image_path)}'")
+    print_section_header(f"API Gateway -> Generic OCR Service (Gemini): OCR Image '{os.path.basename(image_path)}'")
     if not access_token: 
         print("No access token provided for ocr_image_via_gateway.")
         return None 
@@ -133,34 +84,36 @@ def test_07_ocr_image_via_gateway(access_token: str, image_path: str) -> Optiona
 
     ocr_image_url = f"{API_GATEWAY_URL}/ocr/image/"
     
+    form_data_payload = {'lang': 'vie', 'psm': '6'} 
     files_payload = {'file': (os.path.basename(image_path), open(image_path, 'rb'), 'image/jpeg')} 
     headers = {"Authorization": f"Bearer {access_token}"} 
 
     try:
-        response = requests.post(ocr_image_url, files=files_payload, headers=headers)
-        print_response_details(response, f"Sending image to OCR Service at {ocr_image_url}...")
+        response = requests.post(ocr_image_url, files=files_payload, data=form_data_payload, headers=headers)
+        # In chi tiết response JSON trước để debug
+        print("Raw Response Details from Generic OCR Service:")
+        print_response_details(response) # In toàn bộ response
+
         if response.status_code == 200:
             return response.json()
     except requests.exceptions.ConnectionError as e:
-        print(f"Could not connect to {ocr_image_url}. Ensure API Gateway is running and the OCR route is configured.")
+        print(f"Could not connect to {ocr_image_url}. Ensure API Gateway and Generic OCR service are running.")
         print(e)
     finally:
         if 'file' in files_payload and hasattr(files_payload['file'][1], 'close'):
             files_payload['file'][1].close()
     return None
 
-def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: str, lang: str = "vie", use_gemini: bool = True) -> Optional[Dict[str, Any]]:
-    print_section_header(f"API Gateway -> eKYC Info Extraction: Extract Info (use_gemini={use_gemini})")
+def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: str, lang: str = "vie", use_gemini_fallback_for_ekyc: bool = True) -> Optional[Dict[str, Any]]:
+    print_section_header(f"API Gateway -> eKYC Info Extraction: Extract Info (use_gemini_fallback_for_ekyc={use_gemini_fallback_for_ekyc})")
     if not access_token:
         print("No access token provided for ekyc_extract_info_via_gateway.")
         return None
     
     if not ocr_text_sample:
         print("No OCR text provided for extraction.")
-        # Sửa lỗi chính tả "Lỗi VietOCR hoặc không có văn bản." thành một thông báo chung hơn
-        ocr_text_sample = "Lỗi OCR hoặc không có văn bản." 
-        # return None # Không return None ở đây nữa để eKYC service vẫn được gọi và xử lý lỗi này
-
+        ocr_text_sample = "Lỗi OCR hoặc không có văn bản từ Generic OCR Service." 
+        
     extraction_url = f"{API_GATEWAY_URL}/ekyc/extract_info/"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -169,7 +122,7 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
     payload = {
         "ocr_text": ocr_text_sample,
         "language": lang,
-        "use_gemini_fallback": use_gemini
+        "use_gemini_fallback": use_gemini_fallback_for_ekyc # Sử dụng tham số mới này
     }
 
     try:
@@ -183,21 +136,6 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
     return None
 
 
-def test_09_admin_get_users(admin_token: str):
-    print_section_header("API Gateway -> Admin Portal Backend: Get Users")
-    if not admin_token:
-        print("No admin token provided for get_users.")
-        return None
-    
-    headers = {"Authorization": f"Bearer {admin_token}"}
-    params = {"page": 1, "limit": 5}
-    response = requests.get(f"{API_GATEWAY_URL}/admin/users/", headers=headers, params=params)
-    print_response_details(response, "Fetching users via admin route...")
-    if response.status_code == 200:
-        return response.json()
-    return None
-
-
 if __name__ == "__main__":
     print("Starting Full API Flow Tests through API Gateway...")
 
@@ -208,75 +146,53 @@ if __name__ == "__main__":
     if created_user:
         user_token = test_02_login_for_token(new_user_data["username"], new_user_data["password"])
     else:
-        print("User registration failed, cannot proceed with login and other tests for user 1.")
+        print("User registration failed, cannot proceed with login and other tests.")
 
-    if user_token:
+    if not user_token:
+        print("Login failed, cannot proceed with authenticated tests (OCR, eKYC).")
+    else:
         current_user_info = test_03_get_current_user_me(user_token)
         if current_user_info:
             print(f"Successfully fetched 'me' for {current_user_info.get('username')}")
-    else:
-        print("Login failed for user 1, cannot proceed with authenticated tests for user 1.")
-
-    admin_username_from_config = "admin_ekyc" 
-    admin_password = "AdminPassword123" 
-    
-    admin_user_data = {
-        "email": "admin_ekyc@example.com", 
-        "username": admin_username_from_config,
-        "password": admin_password,
-        "full_name": "EKYC Administrator"
-    }
-    
-    print(f"\nAttempting to ensure admin user '{admin_username_from_config}' exists or register...")
-    test_01_register_user(admin_user_data) 
-
-    admin_token = test_02_login_for_token(admin_username_from_config, admin_password)
-
-    if admin_token:
-        print(f"Admin user '{admin_username_from_config}' logged in successfully.")
-        current_admin_info = test_03_get_current_user_me(admin_token)
-        if current_admin_info:
-            print(f"Successfully fetched 'me' for admin: {current_admin_info.get('username')}")
         
-        admin_user_list_page = test_09_admin_get_users(admin_token)
-        if admin_user_list_page:
-            print(f"Admin successfully fetched user list. Total users: {admin_user_list_page.get('total')}, Page: {admin_user_list_page.get('page')}")
-    else:
-        print(f"Admin user '{admin_username_from_config}' login failed. Admin tests will be skipped.")
-        print("Ensure the admin user is registered in User Service or User Service allows this registration.")
-
-
-    if not user_token:
-        print("\nRegular user login failed. Skipping user-specific Storage and OCR tests.")
-    else:
-        print("\n--- OCR Service Tests (PaddleOCR) (via API Gateway with User Token) ---")
+        print("\n--- Generic OCR Service (Gemini Edition) Test ---")
         ocr_result_text_for_extraction = None 
         
-        real_image_path = find_real_image(REAL_IMAGE_BASENAME)
+        real_image_path = find_real_image(REAL_IMAGE_BASENAME) # Sử dụng ảnh thật
 
         if not real_image_path:
             print(f"Không thể tìm thấy ảnh '{REAL_IMAGE_BASENAME}' để kiểm thử OCR. Vui lòng đặt ảnh vào cùng thư mục với script.")
-            ocr_result_text_for_extraction = "Lỗi: Không tìm thấy ảnh để OCR." # Thông báo chung
+            ocr_result_text_for_extraction = f"Lỗi: Không tìm thấy ảnh {REAL_IMAGE_BASENAME} để OCR." 
         else:
-            print(f"\nSử dụng ảnh '{real_image_path}' cho OCR Service (PaddleOCR)...")
-            ocr_result_real_image = test_07_ocr_image_via_gateway(user_token, real_image_path)
+            print(f"\nSử dụng ảnh '{real_image_path}' cho Generic OCR Service...")
+            ocr_response_data = test_07_ocr_image_via_gateway(user_token, real_image_path)
             
-            if ocr_result_real_image and ocr_result_real_image.get("text"):
-                print(f"PaddleOCR Result for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_real_image.get('text')}\n---")
-                ocr_result_text_for_extraction = ocr_result_real_image.get("text") 
+            if ocr_response_data and "text" in ocr_response_data:
+                ocr_result_text_for_extraction = ocr_response_data.get("text")
+                print(f"Generic OCR Service (Gemini) Result for '{os.path.basename(real_image_path)}':\n---\n{ocr_result_text_for_extraction}\n---")
             else:
-                print(f"Không nhận được kết quả văn bản từ OCR Service cho ảnh '{os.path.basename(real_image_path)}'.")
-                ocr_result_text_for_extraction = f"Lỗi OCR hoặc không có văn bản." # Thông báo chung
+                print(f"Không nhận được kết quả văn bản có key 'text' từ Generic OCR Service cho ảnh '{os.path.basename(real_image_path)}'.")
+                ocr_result_text_for_extraction = "Lỗi: Cấu trúc output OCR không đúng hoặc không có text từ Generic OCR Service."
         
-        print("\n--- eKYC Information Extraction Service Tests (via API Gateway with User Token) ---")
-        # Luôn gọi ekyc service ngay cả khi ocr_result_text_for_extraction có thể là thông báo lỗi
-        extracted_info_with_gemini = test_08_ekyc_extract_info_via_gateway(user_token, ocr_result_text_for_extraction, lang="vie", use_gemini=True)
-        if extracted_info_with_gemini:
-             print(f"Extracted Information (Gemini Fallback Enabled for user token run):")
+        print("\n--- eKYC Information Extraction Service Test ---")
+        # Quyết định có dùng Gemini fallback cho eKYC service hay không
+        # True: eKYC service sẽ dùng Regex trước, nếu không ổn sẽ gọi Gemini của nó.
+        # False: eKYC service sẽ chỉ dùng Regex.
+        should_ekyc_use_gemini_fallback = True 
+        
+        extracted_info = test_08_ekyc_extract_info_via_gateway(
+            user_token, 
+            ocr_result_text_for_extraction, 
+            lang="vie", 
+            use_gemini_fallback_for_ekyc=should_ekyc_use_gemini_fallback
+        )
+        
+        if extracted_info:
+             # print_response_details đã in rồi, có thể in thêm tóm tắt nếu muốn
+             print(f"eKYC Service extraction method used: {extracted_info.get('extraction_method')}")
+             if extracted_info.get("errors"):
+                 print(f"eKYC Service extraction errors: {extracted_info.get('errors')}")
         else: 
-            print(f"No information extracted or eKYC service call failed for user.")
-
+            print(f"Không có thông tin được trích xuất bởi eKYC service hoặc gọi service eKYC thất bại.")
 
     print("\nFull API Flow Tests Completed.")
-    print("Ensure API Gateway is correctly configured for all service routes.")
-    print("Ensure all services (User, Storage, OCR Service with PaddleOCR, eKYC Info Extraction, Admin Portal Backend) are running.")

@@ -1,38 +1,23 @@
 FROM python:3.10-slim
 
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    tar \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libxext6 \
-    libsm6 \
-    libfontconfig1 \
-    libxrender1 \
-    fonts-arphic-ukai \
-    fonts-arphic-uming \
-    fonts-wqy-zenhei \
-    libgomp1 \
-    libjpeg-dev \
-    libpng-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Các thư viện hệ thống như libgl1-mesa-glx, libglib2.0-0 có thể không cần thiết nữa
+# nếu không có các thư viện Python nặng về xử lý ảnh/GUI như OpenCV đầy đủ.
+# Pillow thường không yêu cầu chúng.
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#  && rm -rf /var/lib/apt/lists/*
 
 COPY ./requirements.txt /app/requirements.txt
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --timeout=600 -r requirements.txt
-
-RUN mkdir -p /app/model
-COPY ./model/seq2seqocr.pth /app/model/seq2seqocr.pth
-
-RUN python -c "from paddleocr import PaddleOCR; print('Attempting to download default PaddleOCR models for vi...'); PaddleOCR(use_angle_cls=False, lang='vi'); print('Default PaddleOCR model download process complete.')"
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /app/
 
-ENV PORT=8004
-EXPOSE ${PORT}
+EXPOSE 8004
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004"]

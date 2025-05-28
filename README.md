@@ -16,13 +16,13 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
     * **Mô tả**: Quản lý thông tin người dùng, bao gồm đăng ký, đăng nhập, xác thực token JWT.
     * **Công nghệ**: FastAPI, SQLAlchemy (SQLite), Passlib (bcrypt).
     * **Port**: `8001`
-    * **Tình trạng**: **Hoạt động**. Đã kiểm thử thành công qua API Gateway. Có một cảnh báo nhỏ không nghiêm trọng liên quan đến `bcrypt` khi `passlib` cố gắng đọc thông tin phiên bản (lỗi `AttributeError: module 'bcrypt' has no attribute '__about__'`), tuy nhiên chức năng hash và xác minh mật khẩu vẫn hoạt động. Cần xem xét lại `requirements.txt` để `passlib` tự quản lý phiên bản `bcrypt`.
+    * **Tình trạng**: **Hoạt động tốt**. Lỗi "attempt to write a readonly database" đã được khắc phục bằng cách sử dụng named volume cho SQLite database. Cảnh báo nhỏ liên quan đến `bcrypt` khi `passlib` đọc phiên bản vẫn còn, nhưng không ảnh hưởng chức năng.
 
 2.  **API Gateway (`api_gateway`)**
     * **Mô tả**: Điểm vào duy nhất cho client, điều hướng request đến các microservices phù hợp.
     * **Công nghệ**: FastAPI, HTTPX.
     * **Port**: `8000`
-    * **Tình trạng**: **Hoạt động**. Đã kiểm thử điều phối request thành công đến các dịch vụ User, Storage, Generic OCR, và eKYC Information Extraction.
+    * **Tình trạng**: **Hoạt động**. Đã kiểm thử điều phối request thành công đến các dịch vụ User, Storage, Generic OCR (phiên bản Gemini), và eKYC Information Extraction.
 
 3.  **Storage Service (`storage_service`)**
     * **Mô tả**: Lưu trữ và quản lý các file được upload.
@@ -30,42 +30,36 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
     * **Port**: `8003`
     * **Tình trạng**: **Hoạt động**. Đã kiểm thử upload và download file thành công qua API Gateway.
 
-4.  **Generic OCR Service (`generic_ocr_service`)**
-    * **Mô tả**: Thực hiện nhận dạng ký tự quang học (OCR) trên ảnh được cung cấp.
-    * **Công nghệ hiện tại**: FastAPI, **PaddleOCR** (sử dụng `lang='vi'` với các model mặc định như `PP-OCRv5_mobile_det` và `PP-OCRv5_mobile_rec`). Đã có nỗ lực tích hợp VietOCR (model `vgg_seq2seq` với file weights `seq2seqocr.pth`) theo "Lựa chọn C" - một hướng tiếp cận hybrid.
+4.  **Generic OCR Service (`generic_ocr_service`) - Phiên bản Gemini**
+    * **Mô tả**: Thực hiện nhận dạng ký tự quang học (OCR) trên ảnh được cung cấp bằng cách sử dụng Google Gemini API.
+    * **Công nghệ hiện tại**: FastAPI, HTTPX (để gọi Gemini API), Pillow. Sử dụng model `gemini-2.0-flash` để xử lý ảnh và trích xuất văn bản.
+    * **Logic hoạt động**: Nhận file ảnh, chuyển đổi sang base64, gửi đến Gemini API cùng với prompt yêu cầu OCR, nhận về văn bản và trả cho client. Có tích hợp chức năng đếm token (input/output) cho mỗi request Gemini và ghi log.
     * **Port**: `8004`
-    * **Tình trạng**:
-        * **PaddleOCR hoạt động và trả về kết quả OCR**: Service khởi động thành công với PaddleOCR. Khi nhận ảnh, service trả về `Status Code: 200 OK` và một chuỗi văn bản đã được OCR. Kết quả này đã có nội dung chữ, không còn là chuỗi rỗng.
-        * **Chất lượng dấu tiếng Việt (PaddleOCR)**: Kết quả OCR từ model PaddleOCR mobile mặc định cho thấy nhiều từ tiếng Việt (đặc biệt là chữ IN HOA) bị mất dấu hoặc nhận dạng dấu chưa chính xác, mặc dù một số từ có dấu vẫn được giữ lại.
-        * **VietOCR và "Lựa chọn C" (Hybrid OCR - Tích hợp chưa hoàn tất)**:
-            * **Mô tả "Lựa chọn C"**: Đây là một hướng tiếp cận hybrid được đề xuất với mục tiêu cải thiện chất lượng nhận dạng dấu tiếng Việt. Quy trình dự kiến bao gồm:
-                1. PaddleOCR (`lang='vi'`) thực hiện OCR toàn bộ ảnh để lấy văn bản và tọa độ các vùng chữ (bounding box).
-                2. Các vùng chữ quan trọng (Regions of Interest - ROI), đặc biệt là những vùng cần độ chính xác cao về dấu tiếng Việt (ví dụ: tên riêng, địa danh), sẽ được xác định từ kết quả của PaddleOCR.
-                3. Các ROI này sau đó sẽ được "warp" (cắt và chỉnh sửa phối cảnh dựa trên tọa độ box) và đưa qua VietOCR (sử dụng model `vgg_seq2seq` với file weights `seq2seqocr.pth` do người dùng cung cấp) để nhận dạng lại.
-                4. Kết quả từ VietOCR sẽ được dùng để thay thế hoặc bổ sung cho kết quả của PaddleOCR tại các ROI tương ứng, với kỳ vọng VietOCR sẽ cho kết quả dấu tốt hơn cho các vùng này.
-            * **Hiện trạng tích hợp VietOCR**: Mặc dù mã nguồn `main.py` đã bao gồm logic để khởi tạo cả PaddleOCR và VietOCR, và file model `seq2seqocr.pth` đã được copy vào Docker image, log khởi động của service **không cho thấy bất kỳ dấu hiệu nào của việc VietOCR được khởi tạo thành công** (không có log "Lifespan: Attempting to load VietOCR model..." hay các log liên quan khác được ghi nhận trong các lần kiểm tra gần nhất). Do đó, phần xử lý hybrid sử dụng VietOCR trong endpoint `/ocr/image/` chưa được kích hoạt và thử nghiệm đầy đủ. Một lỗi `ValueError: The truth value of an array with more than one element is ambiguous...` cũng đã xuất hiện trong phần code chuẩn bị cho việc xử lý ROI bằng VietOCR (cụ thể là dòng `if should_refine_with_vietocr and box_coordinates:`), cho thấy logic kiểm tra `box_coordinates` cần được sửa nếu tiếp tục hướng này.
-        * **Tạm dừng phát triển hướng Hybrid OCR (PaddleOCR + VietOCR)**: Do gặp khó khăn trong việc xác nhận VietOCR khởi tạo thành công và các lỗi phát sinh, hướng tiếp cận này tạm thời được dừng lại. Service hiện tại hoạt động dựa trên PaddleOCR.
+    * **Tình trạng**: **Hoạt động tốt**. Đã kiểm thử thành công với ảnh CCCD mẫu, Gemini trả về kết quả OCR chính xác và đầy đủ. Service yêu cầu cấu hình `OCR_GEMINI_API_KEY`.
 
-5.  **eKYC Information Extraction Service (`ekyc_information_extraction_service`)**
-    * **Mô tả**: Trích xuất thông tin có cấu trúc (Họ tên, Ngày sinh, Số CMND/CCCD, Địa chỉ, v.v.) từ kết quả OCR của giấy tờ tùy thân. Sử dụng phương pháp hybrid: ban đầu dùng regex, sau đó có thể fallback hoặc cải thiện bằng Google Gemini LLM nếu cần và được cấu hình.
-    * **Công nghệ**: FastAPI, Python (cho regex), Google Generative AI SDK.
+5.  **eKYC Information Extraction Service (`ekyc_information_extraction_service`) - Phiên bản Regex-Only**
+    * **Mô tả**: Trích xuất thông tin có cấu trúc (Họ tên, Ngày sinh, Số CMND/CCCD, Địa chỉ, v.v.) từ kết quả OCR của giấy tờ tùy thân, **chỉ sử dụng biểu thức chính quy (Regex)**.
+    * **Công nghệ**: FastAPI, Python (cho regex).
     * **Port**: `8005`
-    * **Tình trạng**:
-        * **Hoạt động dựa trên output của PaddleOCR**: Service nhận text từ `generic-ocr-service` và đã có thể trích xuất được nhiều trường thông tin cơ bản (Số ID, Họ tên, Ngày sinh, Giới tính, Ngày hết hạn) mà không còn báo lỗi `errors` nghiêm trọng.
-        * **Cần tinh chỉnh Regex**: Các trường như Quốc tịch (`nationality`), Quê quán (`place_of_origin`), Nơi thường trú (`place_of_residence`) vẫn còn bị trích xuất lộn xộn và chứa thông tin thừa. Cần cải thiện các biểu thức chính quy (regex) để phù hợp hơn với định dạng output hiện tại của PaddleOCR.
-        * **Chất lượng trích xuất phụ thuộc OCR**: Độ chính xác của việc trích xuất vẫn bị ảnh hưởng bởi chất lượng dấu tiếng Việt từ đầu vào OCR.
+    * **Tình trạng**: **Hoạt động một phần**.
+        * Service này nhận input text từ `generic-ocr-service` (phiên bản Gemini).
+        * **Trích xuất thành công các trường**: `id_number`, `date_of_birth`, `gender`, `nationality`, `place_of_origin`, `place_of_residence`, `expiry_date` với độ chính xác khá tốt sau các lần tinh chỉnh Regex.
+        * **Vấn đề còn tồn tại**:
+            * Trường `full_name` vẫn chưa trích xuất được (`null`). Log gần nhất cho thấy vẫn còn lỗi "Regex compilation/matching error" ("bad character range") liên quan đến pattern của `full_name`, dù đã có nhiều nỗ lực sửa đổi. Cần tiếp tục xem xét kỹ lưỡng định nghĩa các biến ký tự cho phép và cách chúng được sử dụng trong pattern Regex của `full_name`.
+            * Các trường `date_of_issue`, `place_of_issue`, `personal_identification_features`, `ethnicity`, `religion` không được trích xuất. Điều này là **đúng và mong đợi** vì các thông tin này không có trên mặt trước của Căn cước công dân gắn chip đang được sử dụng để test.
+        * **Không còn sử dụng Gemini fallback**: Service đã được cập nhật để chỉ dựa vào Regex.
 
 6.  **Admin Portal Frontend (`admin_portal_frontend`)**
     * **Mô tả**: Giao diện web cho quản trị viên để xem danh sách người dùng.
     * **Công nghệ**: FastAPI (với Jinja2 templates), HTML, CSS.
     * **Port**: `8080`
-    * **Tình trạng**: **Hoàn thiện cơ bản**. Đã có giao diện login và hiển thị danh sách người dùng với phân trang.
+    * **Tình trạng**: **Hoàn thiện cơ bản**.
 
 7.  **Admin Portal Backend Service (`admin_portal_backend_service`)**
     * **Mô tả**: Service backend cung cấp API cho Admin Portal Frontend.
     * **Công nghệ**: FastAPI.
     * **Port**: `8002`
-    * **Tình trạng**: **Hoàn thiện cơ bản**. Đã có API lấy danh sách user.
+    * **Tình trạng**: **Hoàn thiện cơ bản**.
 
 8.  **Face Detection Service (`face_detection_service`)**: Kế hoạch.
 9.  **Face Comparison Service (`face_comparison_service`)**: Kế hoạch.
@@ -76,51 +70,53 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
 1.  **Yêu cầu**:
     * Docker
     * Docker Compose
-    * (Tùy chọn, nếu sử dụng Gemini fallback trong `ekyc_information_extraction_service`) API Key từ Google AI Studio, được cấu hình trong tệp `.env` ở thư mục gốc dự án:
-        ```
-        GEMINI_API_KEY=your_actual_google_ai_studio_api_key
+    * API Key từ Google AI Studio (hoặc Google Cloud Vertex AI) cho Gemini. Hiện tại chỉ cần cho `generic-ocr-service`:
+        * Một key cho `generic-ocr-service` (sẽ được cấu hình qua biến môi trường `OCR_GEMINI_API_KEY`).
+    * Key này cần được khai báo trong file `.env` ở thư mục gốc của dự án (cùng cấp với `docker-compose.yml`):
+        ```env
+        # Ví dụ nội dung file .env
+        OCR_GEMINI_API_KEY=your_actual_ocr_gemini_api_key
+        # GEMINI_API_KEY=your_actual_ekyc_gemini_api_key # Không còn cần thiết cho ekyc_information_extraction_service
         ```
 
 2.  **Các bước chạy**:
     * Clone repository (nếu có).
     * Đặt các file của từng service vào đúng cấu trúc thư mục.
-    * (Nếu đã từng cấu hình cho VietOCR) Đảm bảo file model `seq2seqocr.pth` được đặt tại `ocr-service/generic_ocr_service/model/seq2seqocr.pth` (mặc dù hiện tại VietOCR chưa được kích hoạt).
+    * Tạo file `.env` ở thư mục gốc dự án và điền API key như hướng dẫn ở trên.
     * Từ thư mục gốc của dự án (chứa file `docker-compose.yml`), chạy lệnh:
         ```bash
         docker-compose up -d --build
         ```
     * Các service sẽ được khởi chạy. Truy cập API Gateway tại `http://localhost:8000`.
 
-## Kịch bản Kiểm thử Toàn bộ Luồng
+## Kịch bản Kiểm thử
 
-* Một script `test_full_flow.py` được sử dụng để kiểm thử tự động các luồng chính của hệ thống.
-* Hiện tại, script này cho thấy `generic-ocr-service` (sử dụng PaddleOCR) trả về kết quả text, và `ekyc_information_extraction_service` có thể trích xuất một phần thông tin từ đó.
+* Sử dụng script `test_ocr_service.py` để kiểm tra riêng `generic-ocr-service` (phiên bản Gemini).
+* Sử dụng script `test_full_flow.py` để kiểm tra toàn bộ luồng từ OCR đến trích xuất thông tin eKYC.
 
-## Tình trạng Dự án Hiện tại (Tính đến 27/05/2025)
+## Tình trạng Dự án Hiện tại (Tính đến 28/05/2025)
 
 * **Các thành phần hoạt động tốt**:
-    * User Service (với cảnh báo nhỏ về bcrypt).
+    * User Service.
     * Storage Service.
     * API Gateway.
     * Admin Portal Frontend & Backend Service.
-    * `generic-ocr-service` sử dụng **PaddleOCR** đã có thể xử lý ảnh và trả về văn bản OCR.
-    * `ekyc_information_extraction_service` đã có thể trích xuất các trường cơ bản từ kết quả của PaddleOCR.
+    * `generic-ocr-service` (phiên bản Gemini) hoạt động tốt, cung cấp OCR chất lượng cao.
+
+* **`ekyc_information_extraction_service` (Regex-Only)**:
+    * Hoạt động, nhận input từ `generic-ocr-service`.
+    * Trích xuất thành công nhiều trường quan trọng.
+    * **Vấn đề chính**: Trường `full_name` vẫn chưa trích xuất được do lỗi Regex ("bad character range"). Cần tiếp tục tinh chỉnh Regex cho trường này.
+    * Các trường không có trên mặt trước CCCD (ngày cấp, nơi cấp, đặc điểm nhận dạng, dân tộc, tôn giáo) không được trích xuất là đúng.
 
 * **Các vấn đề cần giải quyết và cải thiện**:
-    1.  **Chất lượng dấu tiếng Việt của `generic-ocr-service` (PaddleOCR)**: Model PaddleOCR mobile mặc định (`PP-OCRv5_mobile_rec`) cho kết quả nhận dạng dấu tiếng Việt chưa cao, đặc biệt với chữ IN HOA.
-    2.  **Độ chính xác trích xuất thông tin của `ekyc_information_extraction_service`**: Cần tinh chỉnh lại các biểu thức chính quy (regex) để phù hợp hơn với output thực tế từ PaddleOCR, đặc biệt cho các trường phức tạp như địa chỉ, quốc tịch.
-    3.  **VietOCR trong `generic-ocr-service`**: Việc khởi tạo VietOCR chưa thành công (không có log xác nhận trong các lần kiểm tra gần nhất). Hướng hybrid (PaddleOCR + VietOCR, hay "Lựa chọn C") tạm dừng để tập trung vào các giải pháp khác hoặc gỡ lỗi VietOCR một cách triệt để hơn.
-    4.  **Cảnh báo `bcrypt` trong `user-service`**: Cần xem xét lại `requirements.txt` của `user-service`.
-
-* **Hướng tham khảo (đã tạm dừng)**:
-    * Đã xem xét project `Vietnamese-CitizenID-Recognition` trên GitHub (do người dùng cung cấp file `Extractor.py` và `requirements.txt`). Project này sử dụng kết hợp PaddleOCR (`lang='en'` cho detection) và VietOCR (model `vgg_seq2seq` với file weights `seq2seqocr.pth` cho recognition tiếng Việt).
+    1.  **Tinh chỉnh Regex cho `full_name` trong `ekyc_information_extraction_service`**: Đây là ưu tiên hàng đầu để hoàn thiện chức năng trích xuất.
+    2.  **Chi phí Token Gemini cho `generic-ocr-service`**: Theo dõi và cân nhắc nếu cần tối ưu.
+    3.  **Cảnh báo `bcrypt` trong `user-service`**: Vấn đề nhỏ, có thể xem xét sau.
 
 ## Ưu tiên Tiếp theo
 
-1.  **Cải thiện chất lượng nhận dạng dấu tiếng Việt của `generic-ocr-service`**:
-    * **Ưu tiên**: xem xét lại các engine OCR khác (ví dụ: Tesseract) nếu có đánh giá tốt về chất lượng dấu tiếng Việt cho loại ảnh CCCD và dễ tích hợp hơn.
-2.  **Tinh chỉnh Regex trong `ekyc_information_extraction_service`**: Dựa trên output ổn định nhất có thể đạt được từ `generic-ocr-service`, tối ưu hóa lại các biểu thức chính quy.
-3.  **(Tùy chọn, nếu quyết định quay lại)** **Gỡ lỗi khởi tạo VietOCR**: Nếu vẫn muốn theo đuổi giải pháp hybrid "Lựa chọn C", cần tìm ra nguyên nhân VietOCR không hiển thị log khởi tạo trong `generic-ocr-service` và giải quyết các lỗi phát sinh (như `ValueError` đã thấy).
-4.  **Giải quyết cảnh báo `bcrypt`** trong `user-service`.
-5.  **Phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt** theo kế hoạch.
-
+1.  **Sửa lỗi Regex và hoàn thiện trích xuất `full_name`** trong `ekyc_information_extraction_service`.
+2.  Kiểm thử toàn diện luồng eKYC với nhiều ảnh CCCD khác nhau sau khi `full_name` được sửa.
+3.  Xem xét tối ưu hóa chi phí token nếu cần.
+4.  Phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt theo kế hoạch.

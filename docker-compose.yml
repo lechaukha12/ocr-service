@@ -7,7 +7,8 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - ./user_service:/app
+      - ./user_service:/app # Mount code
+      - user_db_data:/app/db # Mount named volume cho thư mục chứa DB
     networks:
       - ocr_network
     restart: unless-stopped
@@ -28,19 +29,16 @@ services:
 
   generic-ocr-service:
     build:
-      context: ./generic_ocr_service  # <<< SỬA Ở ĐÂY: dấu gạch dưới _
+      context: ./generic_ocr_service
       dockerfile: Dockerfile
     container_name: generic-ocr-service-compose
     ports:
       - "8004:8004"
-    # Bạn có thể bỏ comment dòng volumes này sau khi image được build đúng
     volumes:
-      - ./generic_ocr_service:/app # <<< SỬA Ở ĐÂY: dấu gạch dưới _
+      - ./generic_ocr_service:/app 
     networks:
       - ocr_network
     restart: unless-stopped
-    # environment:
-    #   - TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
   admin-portal-backend:
     build:
@@ -59,13 +57,13 @@ services:
       - ocr_network
     restart: unless-stopped
 
-  ekyc-info-extraction-service: # <-- KHỐI MỚI
+  ekyc-info-extraction-service: 
     build:
       context: ./ekyc_information_extraction_service
       dockerfile: Dockerfile
     container_name: ekyc-info-extraction-service-compose
     ports:
-      - "8005:8005" # Service này sẽ chạy trên cổng 8005
+      - "8005:8005" 
     volumes:
       - ./ekyc_information_extraction_service:/app
     networks:
@@ -86,13 +84,13 @@ services:
       - STORAGE_SERVICE_URL=http://storage-service-compose:8003
       - ADMIN_PORTAL_BACKEND_SERVICE_URL=http://admin-portal-backend-compose:8002
       - GENERIC_OCR_SERVICE_URL=http://generic-ocr-service-compose:8004
-      - EKYC_INFO_EXTRACTION_SERVICE_URL=http://ekyc-info-extraction-service-compose:8005 # <-- THÊM DÒNG NÀY
+      - EKYC_INFO_EXTRACTION_SERVICE_URL=http://ekyc-info-extraction-service-compose:8005
     depends_on:
       - user-service
       - storage-service
       - generic-ocr-service
       - admin-portal-backend
-      - ekyc-info-extraction-service # <-- THÊM DEPENDENCY NÀY
+      - ekyc-info-extraction-service
     networks:
       - ocr_network
     restart: unless-stopped
@@ -108,9 +106,6 @@ services:
       - ./admin_portal_frontend:/app
     environment:
       - ADMIN_PORTAL_BACKEND_URL=http://admin-portal-backend-compose:8002
-      # - SECRET_KEY=your_frontend_secret_key_here
-      # - ALGORITHM=HS256
-      # - ACCESS_TOKEN_EXPIRE_MINUTES=30
     depends_on:
       - admin-portal-backend
     networks:
@@ -120,3 +115,6 @@ services:
 networks:
   ocr_network:
     driver: bridge
+
+volumes:
+  user_db_data:
