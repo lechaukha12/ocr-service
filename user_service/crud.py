@@ -29,3 +29,13 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[models
     total_users = db.query(models.UserDB).count()
     users = db.query(models.UserDB).order_by(models.UserDB.id).offset(skip).limit(limit).all()
     return users, total_users
+
+def create_ekyc_info(db: Session, ekyc_info: models.EkycInfoCreate) -> models.EkycInfoDB:
+    db_ekyc = models.EkycInfoDB(**ekyc_info.dict())
+    db.add(db_ekyc)
+    db.commit()
+    db.refresh(db_ekyc)
+    return db_ekyc
+
+def get_ekyc_info_by_user_id(db: Session, user_id: int) -> list[models.EkycInfoDB]:
+    return db.query(models.EkycInfoDB).filter(models.EkycInfoDB.user_id == user_id).order_by(models.EkycInfoDB.created_at.desc()).all()

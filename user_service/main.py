@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -158,3 +158,25 @@ def read_all_users(
         limit=limit,
         pages=total_pages
     )
+
+
+from models import EkycInfo, EkycInfoCreate
+
+@app.post("/ekyc/", response_model=EkycInfo, tags=["eKYC"])
+def create_ekyc_info(
+    ekyc_info: EkycInfoCreate = Body(...),
+    db: Session = Depends(database.get_db),
+    current_user: Annotated[models.User, Depends(get_current_active_user)] = None
+):
+    if ekyc_info.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="User ID mismatch.")
+    db_ekyc = crud.create_ekyc_info(db, ekyc_info)
+    return EkycInfo.model_validate(db_ekyc)
+
+@app.get("/ekyc/me", response_model=List[EkycInfo], tags=["eKYC"])
+def get_my_ekyc_info(
+    db: Session = Depends(database.get_db),
+    current_user: Annotated[models.User, Depends(get_current_active_user)] = None
+):
+    records = crud.get_ekyc_info_by_user_id(db, current_user.id)
+    return [EkycInfo.model_validate(r) for r in records]

@@ -36,17 +36,16 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
     * **Logic hoạt động**: Nhận file ảnh, chuyển đổi sang base64, gửi đến Gemini API cùng với prompt yêu cầu OCR, nhận về văn bản và trả cho client. Có tích hợp chức năng đếm token (input/output) cho mỗi request Gemini và ghi log.
     * **Port**: `8004`
     * **Tình trạng**: **Hoạt động tốt**. Đã kiểm thử thành công với ảnh CCCD mẫu, Gemini trả về kết quả OCR chính xác và đầy đủ. Service yêu cầu cấu hình `OCR_GEMINI_API_KEY`.
+    * **Yêu cầu thư viện**: Xem file `generic_ocr_service/requirements.txt` (đã bổ sung `pydantic-settings`).
 
 5.  **eKYC Information Extraction Service (`ekyc_information_extraction_service`) - Phiên bản Regex-Only**
     * **Mô tả**: Trích xuất thông tin có cấu trúc (Họ tên, Ngày sinh, Số CMND/CCCD, Địa chỉ, v.v.) từ kết quả OCR của giấy tờ tùy thân, **chỉ sử dụng biểu thức chính quy (Regex)**.
     * **Công nghệ**: FastAPI, Python (cho regex).
     * **Port**: `8005`
-    * **Tình trạng**: **Hoạt động một phần**.
+    * **Tình trạng**: **Hoạt động tốt**.
         * Service này nhận input text từ `generic-ocr-service` (phiên bản Gemini).
-        * **Trích xuất thành công các trường**: `id_number`, `date_of_birth`, `gender`, `nationality`, `place_of_origin`, `place_of_residence`, `expiry_date` với độ chính xác khá tốt sau các lần tinh chỉnh Regex.
-        * **Vấn đề còn tồn tại**:
-            * Trường `full_name` vẫn chưa trích xuất được (`null`). Log gần nhất cho thấy vẫn còn lỗi "Regex compilation/matching error" ("bad character range") liên quan đến pattern của `full_name`, dù đã có nhiều nỗ lực sửa đổi. Cần tiếp tục xem xét kỹ lưỡng định nghĩa các biến ký tự cho phép và cách chúng được sử dụng trong pattern Regex của `full_name`.
-            * Các trường `date_of_issue`, `place_of_issue`, `personal_identification_features`, `ethnicity`, `religion` không được trích xuất. Điều này là **đúng và mong đợi** vì các thông tin này không có trên mặt trước của Căn cước công dân gắn chip đang được sử dụng để test.
+        * **Trích xuất thành công các trường**: `id_number`, `date_of_birth`, `gender`, `nationality`, `place_of_origin`, `place_of_residence`, `expiry_date`, `full_name` (đã sửa lỗi Regex, trích xuất chính xác).
+        * **Các trường không có trên mặt trước CCCD (ngày cấp, nơi cấp, đặc điểm nhận dạng, dân tộc, tôn giáo) không được trích xuất là đúng.**
         * **Không còn sử dụng Gemini fallback**: Service đã được cập nhật để chỉ dựa vào Regex.
 
 6.  **Admin Portal Frontend (`admin_portal_frontend`)**
@@ -61,9 +60,23 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
     * **Port**: `8002`
     * **Tình trạng**: **Hoàn thiện cơ bản**.
 
-8.  **Face Detection Service (`face_detection_service`)**: Kế hoạch.
-9.  **Face Comparison Service (`face_comparison_service`)**: Kế hoạch.
-10. **Liveness Service (`liveness_service`)**: Kế hoạch.
+8.  **Face Detection Service (`face_detection_service`)**
+    * **Mô tả**: Phát hiện khuôn mặt trong ảnh, trả về vị trí (bounding box) các khuôn mặt.
+    * **Công nghệ**: FastAPI, face_recognition hoặc OpenCV.
+    * **Port**: `8006`
+    * **Tình trạng**: **Đang phát triển**.
+
+9.  **Face Comparison Service (`face_comparison_service`)**
+    * **Mô tả**: So sánh hai ảnh khuôn mặt, trả về điểm tương đồng (similarity score).
+    * **Công nghệ**: FastAPI, face_recognition hoặc deepface.
+    * **Port**: `8007`
+    * **Tình trạng**: **Đang phát triển**.
+
+10. **Liveness Service (`liveness_service`)**
+    * **Mô tả**: Kiểm tra liveness (ảnh là người thật, không phải ảnh giấy/tái sử dụng).
+    * **Công nghệ**: FastAPI, model liveness open source hoặc tích hợp API cloud.
+    * **Port**: `8008`
+    * **Tình trạng**: **Đang phát triển**.
 
 ## Thiết lập và Chạy Dự án
 
@@ -89,12 +102,59 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
         ```
     * Các service sẽ được khởi chạy. Truy cập API Gateway tại `http://localhost:8000`.
 
+## Kiểm thử so khớp khuôn mặt (Face Comparison)
+
+- Để kiểm thử chức năng so khớp khuôn mặt giữa ảnh CCCD và ảnh selfie, cần đảm bảo:
+    1. Đã có đủ hai file ảnh mẫu: `IMG_4620.png` (ảnh CCCD) và `IMG_4637.png` (ảnh selfie) trong thư mục gốc.
+    2. Dịch vụ `face_comparison_service` (port 8007) đã được khởi động:
+        - Có thể khởi động bằng lệnh:
+          ```bash
+          docker compose up -d face-comparison-service
+          ```
+    3. Sau đó, chạy lại script kiểm thử toàn bộ luồng:
+        ```bash
+        python3 test_full_flow.py
+        ```
+    4. Kết quả so khớp khuôn mặt sẽ được in ra màn hình, cho biết hai ảnh có khớp hay không và điểm tương đồng (score).
+
+- Nếu gặp lỗi "Connection refused" khi kiểm thử, hãy kiểm tra lại trạng thái container `face_comparison_service`.
+
+## Kiểm thử và bảo mật so khớp khuôn mặt (Face Comparison)
+
+- **Ngưỡng so khớp khuôn mặt (face match threshold) đã được đặt là 0.4** để đảm bảo chỉ những khuôn mặt thực sự giống nhau mới được coi là khớp. Điều này giúp loại bỏ hoàn toàn nguy cơ nhận diện sai khuôn mặt không khớp là "khớp" – một lỗi tối kỵ trong eKYC.
+- **Cảnh báo bảo mật:** Nếu score >= 0.4, hệ thống sẽ trả về match = false (KHÔNG KHỚP), bất kể hai ảnh có thể hơi giống nhau. Chỉ score < 0.4 mới được coi là khớp.
+
+### Hướng dẫn kiểm thử so khớp khuôn mặt
+
+1. Đảm bảo có đủ các file ảnh mẫu trong thư mục gốc:
+    - `IMG_4620.png`: Ảnh CCCD
+    - `IMG_4637.png`: Ảnh khuôn mặt KHỚP với CCCD
+    - `IMG_5132.png`: Ảnh khuôn mặt KHÔNG KHỚP với CCCD
+2. Khởi động lại dịch vụ face_comparison_service sau khi cập nhật:
+    ```bash
+    docker compose build face-comparison-service && docker compose up -d face-comparison-service
+    ```
+3. Chạy lại script kiểm thử toàn bộ luồng:
+    ```bash
+    python3 test_full_flow.py
+    ```
+4. Kết quả sẽ in rõ:
+    - [CASE 1] CCCD vs Ảnh selfie KHỚP: Nếu score < 0.4, match = true. Nếu score >= 0.4, match = false.
+    - [CASE 2] CCCD vs Ảnh không khớp: match = false (bảo mật tuyệt đối).
+
+### Ý nghĩa các trường trả về từ API so khớp khuôn mặt
+- `match`: true/false – hai khuôn mặt có được coi là khớp không (dựa trên threshold)
+- `score`: giá trị khoảng cách khuôn mặt, càng nhỏ càng giống
+- `threshold`: ngưỡng so khớp hiện tại (0.4)
+
+> **Khuyến nghị:** Không nên tăng threshold lên cao hơn 0.4 để đảm bảo an toàn eKYC. Nếu cần kiểm thử với ảnh khác, chỉ cần đổi tên file ảnh và chạy lại script.
+
 ## Kịch bản Kiểm thử
 
 * Sử dụng script `test_ocr_service.py` để kiểm tra riêng `generic-ocr-service` (phiên bản Gemini).
 * Sử dụng script `test_full_flow.py` để kiểm tra toàn bộ luồng từ OCR đến trích xuất thông tin eKYC.
 
-## Tình trạng Dự án Hiện tại (Tính đến 28/05/2025)
+## Tình trạng Dự án Hiện tại (Cập nhật ngày 04/06/2025)
 
 * **Các thành phần hoạt động tốt**:
     * User Service.
@@ -102,21 +162,16 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
     * API Gateway.
     * Admin Portal Frontend & Backend Service.
     * `generic-ocr-service` (phiên bản Gemini) hoạt động tốt, cung cấp OCR chất lượng cao.
+    * `ekyc_information_extraction_service` (Regex-Only) đã sửa lỗi Regex, trích xuất chính xác trường `full_name` và các trường quan trọng khác.
 
-* **`ekyc_information_extraction_service` (Regex-Only)**:
-    * Hoạt động, nhận input từ `generic-ocr-service`.
-    * Trích xuất thành công nhiều trường quan trọng.
-    * **Vấn đề chính**: Trường `full_name` vẫn chưa trích xuất được do lỗi Regex ("bad character range"). Cần tiếp tục tinh chỉnh Regex cho trường này.
+* **Các vấn đề nhỏ còn lại**:
+    * Cảnh báo `bcrypt` trong `user-service` (không ảnh hưởng chức năng).
     * Các trường không có trên mặt trước CCCD (ngày cấp, nơi cấp, đặc điểm nhận dạng, dân tộc, tôn giáo) không được trích xuất là đúng.
 
-* **Các vấn đề cần giải quyết và cải thiện**:
-    1.  **Tinh chỉnh Regex cho `full_name` trong `ekyc_information_extraction_service`**: Đây là ưu tiên hàng đầu để hoàn thiện chức năng trích xuất.
-    2.  **Chi phí Token Gemini cho `generic-ocr-service`**: Theo dõi và cân nhắc nếu cần tối ưu.
-    3.  **Cảnh báo `bcrypt` trong `user-service`**: Vấn đề nhỏ, có thể xem xét sau.
+* **Các dịch vụ nhận diện khuôn mặt và liveness**: Đang ở giai đoạn kế hoạch.
 
 ## Ưu tiên Tiếp theo
 
-1.  **Sửa lỗi Regex và hoàn thiện trích xuất `full_name`** trong `ekyc_information_extraction_service`.
-2.  Kiểm thử toàn diện luồng eKYC với nhiều ảnh CCCD khác nhau sau khi `full_name` được sửa.
-3.  Xem xét tối ưu hóa chi phí token nếu cần.
-4.  Phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt theo kế hoạch.
+1.  Kiểm thử toàn diện luồng eKYC với nhiều ảnh CCCD khác nhau.
+2.  Xem xét tối ưu hóa chi phí token nếu cần.
+3.  Phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt theo kế hoạch.

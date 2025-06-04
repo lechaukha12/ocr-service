@@ -135,6 +135,34 @@ def test_08_ekyc_extract_info_via_gateway(access_token: str, ocr_text_sample: st
         print(e)
     return None
 
+def test_09_face_comparison_via_service(image1_path: str, image2_path: str):
+    print_section_header(f"Face Comparison Service: Compare '{os.path.basename(image1_path)}' vs '{os.path.basename(image2_path)}'")
+    if not os.path.exists(image1_path) or not os.path.exists(image2_path):
+        print(f"Không tìm thấy file ảnh: {image1_path} hoặc {image2_path}")
+        return None
+    url = "http://localhost:8007/compare_faces/"
+    files = {
+        'file1': (os.path.basename(image1_path), open(image1_path, 'rb'), 'image/jpeg'),
+        'file2': (os.path.basename(image2_path), open(image2_path, 'rb'), 'image/jpeg')
+    }
+    try:
+        response = requests.post(url, files=files)
+        print_response_details(response, f"So khớp khuôn mặt qua {url}")
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("match"):
+                print(f"Kết quả: Khuôn mặt KHỚP với độ tương đồng (score): {result.get('score')}")
+            else:
+                print(f"Kết quả: Khuôn mặt KHÔNG KHỚP. Score: {result.get('score')}. Lý do: {result.get('message','')}")
+            return result
+    except Exception as e:
+        print(f"Lỗi khi gọi Face Comparison Service: {e}")
+    finally:
+        for f in files.values():
+            if hasattr(f[1], 'close'):
+                f[1].close()
+    return None
+
 
 if __name__ == "__main__":
     print("Starting Full API Flow Tests through API Gateway...")
@@ -195,4 +223,18 @@ if __name__ == "__main__":
         else: 
             print(f"Không có thông tin được trích xuất bởi eKYC service hoặc gọi service eKYC thất bại.")
 
+    print("\n--- Face Comparison Service Test ---")
+    cccd_image = find_real_image("IMG_4620")
+    selfie_image = find_real_image("IMG_4637")
+    not_match_image = find_real_image("IMG_5132")
+    if cccd_image and selfie_image:
+        print("\n[CASE 1] So khớp khuôn mặt: CCCD vs Ảnh selfie KHỚP")
+        test_09_face_comparison_via_service(cccd_image, selfie_image)
+    else:
+        print("Không tìm thấy đủ ảnh để kiểm thử so khớp khuôn mặt (IMG_4620 & IMG_4637)")
+    if cccd_image and not_match_image:
+        print("\n[CASE 2] So khớp khuôn mặt: CCCD vs Ảnh không khớp")
+        test_09_face_comparison_via_service(cccd_image, not_match_image)
+    else:
+        print("Không tìm thấy đủ ảnh để kiểm thử so khớp khuôn mặt (IMG_4620 & IMG_5132)")
     print("\nFull API Flow Tests Completed.")

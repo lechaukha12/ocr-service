@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Request, HTTPException, status, Response, UploadFile, File, Form
+from fastapi import FastAPI, Request, HTTPException, status, Response, UploadFile, File, Form, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 import asyncio
 from typing import List, Optional
 import logging # Thêm logging
+import jwt
 
 from config import settings
 
@@ -264,3 +265,90 @@ async def proxy_ekyc_extract_info(request: Request):
         json_data=json_data,
         headers_to_forward=headers_to_fwd
     )
+
+@app.post("/ekyc/full_flow/", tags=["eKYC Full Flow"])
+async def ekyc_full_flow(
+    request: Request,
+    cccd_image: UploadFile = File(...),
+    selfie_image: UploadFile = File(...),
+    lang: Optional[str] = Form("vie"),
+    psm: Optional[str] = Form(None)
+):
+    """
+    1. Upload selfie image lên storage_service, lấy URL.
+    2. Gửi ảnh CCCD qua OCR service lấy text.
+    3. Gửi text qua eKYC extraction lấy dữ liệu bóc tách.
+    4. Lưu dữ liệu eKYC (các trường + selfie_image_url) vào user_service.
+    5. Trả về kết quả cuối cùng.
+    """
+    # 1. Upload selfie image
+    storage_url = f"{settings.STORAGE_SERVICE_URL}/upload/file/"
+    selfie_bytes = await selfie_image.read()
+    files = {"file": (selfie_image.filename, selfie_bytes, selfie_image.content_type)}
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        storage_resp = await client.post(storage_url, files=files)
+        if storage_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Upload selfie image failed")
+        selfie_result = storage_resp.json()
+        selfie_image_url = selfie_result.get("url") or selfie_result.get("file_url") or selfie_result.get("file_id")
+        if not selfie_image_url:
+            raise HTTPException(status_code=502, detail="Storage service did not return file url")
+
+    # 2. OCR CCCD image
+    ocr_url = f"{settings.GENERIC_OCR_SERVICE_URL}/ocr/image/"
+    cccd_bytes = await cccd_image.read()
+    files = {"file": (cccd_image.filename, cccd_bytes, cccd_image.content_type)}
+    data = {"lang": lang}
+    if psm:
+        data["psm"] = psm
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        ocr_resp = await client.post(ocr_url, files=files, data=data)
+        if ocr_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="OCR service failed")
+        ocr_json = ocr_resp.json()
+        ocr_text = ocr_json.get("text")
+        if not ocr_text:
+            raise HTTPException(status_code=502, detail="OCR service did not return text")
+
+    # 3. eKYC extraction
+    ekyc_url = f"{settings.EKYC_INFO_EXTRACTION_SERVICE_URL}/extract_info/"
+    payload = {"ocr_text": ocr_text, "language": lang}
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        ekyc_resp = await client.post(ekyc_url, json=payload)
+        if ekyc_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="eKYC extraction failed")
+        ekyc_data = ekyc_resp.json()
+
+    # 4. Lưu dữ liệu eKYC vào user_service
+    # Lấy user_id từ token
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    token = auth_header.split(" ")[-1]
+    try:
+        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = decoded.get("user_id")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token missing user_id")
+
+    user_service_url = f"{settings.USER_SERVICE_URL}/ekyc/"
+    ekyc_payload = {k: ekyc_data.get(k) for k in [
+        "id_number", "full_name", "date_of_birth", "gender", "nationality", "place_of_origin", "place_of_residence", "expiry_date"
+    ]}
+    ekyc_payload["user_id"] = user_id
+    ekyc_payload["selfie_image_url"] = selfie_image_url
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        save_resp = await client.post(user_service_url, json=ekyc_payload, headers={"Authorization": auth_header})
+        if save_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Save eKYC info failed")
+        saved_ekyc = save_resp.json()
+
+    # 5. Trả về kết quả tổng hợp
+    return {
+        "ekyc_info": saved_ekyc,
+        "ocr_text": ocr_text,
+        "extracted_fields": ekyc_data,
+        "selfie_image_url": selfie_image_url
+    }
