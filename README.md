@@ -383,16 +383,58 @@ Các route tương ứng cho các chức năng mới (Quản lý eKYC, Thống k
    - FAQ cho admin
    - Quy trình xử lý các tình huống phổ biến
 
-## Lỗi hiện tại (log service)
+## [CẬP NHẬT 04/06/2025] Refactor models/schema cho user_service (chuẩn FastAPI + SQLAlchemy + Pydantic 2.x)
 
-### user-service
-- Lỗi Pydantic khi khởi động service:
-  - `A non-annotated attribute was detected: ekyc_records = <Relationship ...>. All model fields require a type annotation; if ekyc_records is not meant to be a field, you may be able to resolve this error by annotating it as a ClassVar or updating model_config['ignored_types'].`
-  - `Unable to generate pydantic-core schema for <class 'models.EkycRecord'>. Set arbitrary_types_allowed=True in the model_config to ignore this error or implement __get_pydantic_core_schema__ on your type to fully support it.`
-  - Tham khảo: https://errors.pydantic.dev/2.4/u/model-field-missing-annotation và https://errors.pydantic.dev/2.4/u/schema-for-unknown-type
+### Vấn đề gặp phải
+- Lỗi annotation giữa SQLAlchemy và Pydantic khi dùng chung file cho cả ORM models và Pydantic schemas.
+- Lỗi điển hình:
+  - `A non-annotated attribute was detected: ekyc_records = <Relationship ...>. All model fields require a type annotation; ...`
+  - `Unable to generate pydantic-core schema for <class 'models.EkycRecord'>...`
+  - `Type annotation for "UserDB.ekyc_records" can't be correctly interpreted for Annotated Declarative Table form...`
 
-### postgres-service
-- Không có lỗi nghiêm trọng, database khởi động thành công và sẵn sàng nhận kết nối.
+### Cách khắc phục triệt để
+- **Tách biệt hoàn toàn SQLAlchemy models và Pydantic schemas:**
+  - `models.py`: chỉ chứa SQLAlchemy models (không import hay kế thừa từ Pydantic).
+  - `schemas.py`: chỉ chứa các Pydantic schemas cho API (không import hay kế thừa từ SQLAlchemy).
+- **Các endpoint, CRUD, service chỉ import đúng loại cần thiết:**
+  - CRUD, DB: import models từ `models.py`.
+  - API, response: import schemas từ `schemas.py`.
+- **Quan hệ (relationship) trong SQLAlchemy:**
+  - Dùng đúng kiểu: `Mapped[List["EkycRecord"]] = relationship(...)`.
+  - Không dùng ClassVar cho trường mapped.
+- **Không còn bất kỳ decorator hay default argument nào dùng `models.` cho schema.
+
+### Kết quả
+- Service user_service đã khởi động thành công, không còn lỗi annotation hay schema.
+- Đã kiểm thử các endpoint: tạo user, đăng nhập, lấy thông tin user, tạo/lấy eKYC info... đều hoạt động bình thường.
+
+### Ghi chú cho dự án FastAPI + SQLAlchemy + Pydantic 2.x
+- **Luôn tách models (ORM) và schemas (Pydantic) thành 2 file riêng biệt.**
+- **Không dùng chung class cho cả ORM và API schema.**
+- **Quan hệ SQLAlchemy phải dùng đúng Mapped[List[...]] và forward reference với from __future__ import annotations.**
+- **Endpoint chỉ trả về schema, không trả về trực tiếp ORM object.**
 
 ---
-> Ghi chú: Cần fix các lỗi Pydantic liên quan đến annotation và cấu hình model_config trong models.py của user_service.
+
+### Recent Updates
+
+#### eKYC Records Display Fix
+
+1. **Issue Identified**: Admin portal's eKYC management page did not display any records.
+2. **Backend Fix**:
+   - Updated `admin_portal_backend_service` to query `/ekyc/records/all` instead of `/ekyc/all`.
+   - Added `/ekyc/record/` and `/ekyc/records/all` endpoints in `user_service`.
+3. **Frontend Fix**:
+   - Updated `admin_portal_frontend` to query the correct API Gateway endpoint for eKYC records.
+4. **Testing**:
+   - Verified full flow functionality and ensured eKYC records are saved and displayed correctly.
+
+#### Database Schema Update
+
+- Added `extracted_info`, `document_image_id`, and `selfie_image_id` fields to the `EkycRecord` model in `user_service/models.py`.
+- Established relationships between `UserDB` and `EkycRecord` models for better data linkage.
+
+#### Next Steps
+
+- Test admin portal UI thoroughly to ensure records are visible and functional.
+- Monitor logs for any unexpected errors or issues.

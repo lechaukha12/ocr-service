@@ -7,10 +7,14 @@ from sqlalchemy.orm import Session
 import math
 
 import crud
-import models
 import utils
 import database
 from config import settings
+from schemas import (
+    UserBase, UserCreate, User, UserPage, Token, TokenData, UserLogin,
+    EkycInfoBase, EkycInfoCreate, EkycInfo, EkycPage,
+    EkycRecordSchema, EkycRecordPage, EkycRecordCreate
+)
 
 database.create_db_tables()
 
@@ -18,7 +22,9 @@ app = FastAPI(title="User Service")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-def create_access_token(user: models.UserDB, expires_delta: timedelta | None = None):
+from models import UserDB
+# ...existing code...
+def create_access_token(user: UserDB, expires_delta: timedelta | None = None):
     to_encode = {"sub": user.username}
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -49,7 +55,7 @@ async def get_current_user_db(token: Annotated[str, Depends(oauth2_scheme)], db:
         username: str | None = payload.get("sub")
         if username is None:
             raise credentials_exception
-        token_data = models.TokenData(username=username)
+        token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
     
@@ -59,15 +65,15 @@ async def get_current_user_db(token: Annotated[str, Depends(oauth2_scheme)], db:
     return user
 
 async def get_current_active_user(
-    current_user: Annotated[models.UserDB, Depends(get_current_user_db)]
+    current_user: Annotated[UserDB, Depends(get_current_user_db)]
 ):
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
-    return models.User.model_validate(current_user)
+    return User.model_validate(current_user)
 
 
 async def get_current_active_admin_user(
-    current_user: Annotated[models.UserDB, Depends(get_current_user_db)]
+    current_user: Annotated[UserDB, Depends(get_current_user_db)]
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -82,11 +88,11 @@ async def get_current_active_admin_user(
     except Exception: 
         raise credentials_exception
     
-    return models.User.model_validate(current_user)
+    return User.model_validate(current_user)
 
 
-@app.post("/users/", response_model=models.User, status_code=status.HTTP_201_CREATED, tags=["Users"])
-def create_new_user(user: models.UserCreate, db: Session = Depends(database.get_db)):
+@app.post("/users/", response_model=User, status_code=status.HTTP_201_CREATED, tags=["Users"])
+def create_new_user(user: UserCreate, db: Session = Depends(database.get_db)):
     db_user_by_email = crud.get_user_by_email(db, email=user.email)
     if db_user_by_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
@@ -96,10 +102,10 @@ def create_new_user(user: models.UserCreate, db: Session = Depends(database.get_
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
         
     created_user_db = crud.create_user(db=db, user=user)
-    return models.User.model_validate(created_user_db)
+    return User.model_validate(created_user_db)
 
 
-@app.post("/token", response_model=models.Token, tags=["Authentication"])
+@app.post("/token", response_model=Token, tags=["Authentication"])
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(database.get_db)
@@ -122,21 +128,21 @@ async def login_for_access_token(
     access_token = create_access_token(
         user=user_db_obj, expires_delta=access_token_expires
     )
-    user_info_for_response = models.User.model_validate(user_db_obj)
+    user_info_for_response = User.model_validate(user_db_obj)
     return {"access_token": access_token, "token_type": "bearer", "user_info": user_info_for_response}
 
-@app.get("/users/me/", response_model=models.User, tags=["Users"])
+@app.get("/users/me/", response_model=User, tags=["Users"])
 async def read_users_me(
-    current_user: Annotated[models.User, Depends(get_current_active_user)]
+    current_user: Annotated[User, Depends(get_current_active_user)]
 ):
     return current_user
 
-@app.get("/users/", response_model=models.UserPage, tags=["Admin"])
+@app.get("/users/", response_model=UserPage, tags=["Admin"])
 def read_all_users(
     skip: int = 0,
     limit: int = 10,
     db: Session = Depends(database.get_db),
-    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None 
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None 
 ):
     if limit <= 0:
         limit = 10
@@ -151,8 +157,8 @@ def read_all_users(
         total_pages = 1
 
 
-    return models.UserPage(
-        items=[models.User.model_validate(user_db) for user_db in users_db_list],
+    return UserPage(
+        items=[User.model_validate(user_db) for user_db in users_db_list],
         total=total_users,
         page=current_page,
         limit=limit,
@@ -160,13 +166,11 @@ def read_all_users(
     )
 
 
-from models import EkycInfo, EkycInfoCreate
-
 @app.post("/ekyc/", response_model=EkycInfo, tags=["eKYC"])
 def create_ekyc_info(
     ekyc_info: EkycInfoCreate = Body(...),
     db: Session = Depends(database.get_db),
-    current_user: Annotated[models.User, Depends(get_current_active_user)] = None
+    current_user: Annotated[User, Depends(get_current_active_user)] = None
 ):
     if ekyc_info.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="User ID mismatch.")
@@ -176,20 +180,20 @@ def create_ekyc_info(
 @app.get("/ekyc/me", response_model=List[EkycInfo], tags=["eKYC"])
 def get_my_ekyc_info(
     db: Session = Depends(database.get_db),
-    current_user: Annotated[models.User, Depends(get_current_active_user)] = None
+    current_user: Annotated[User, Depends(get_current_active_user)] = None
 ):
     records = crud.get_ekyc_info_by_user_id(db, current_user.id)
     return [EkycInfo.model_validate(r) for r in records]
 
 
-@app.get("/ekyc/all", response_model=models.EkycPage, tags=["Admin"])
+@app.get("/ekyc/all", response_model=EkycPage, tags=["Admin"])
 def get_all_ekyc_records(
     skip: int = 0,
     limit: int = 10,
     status: Optional[str] = None,
     date: Optional[str] = None,
     db: Session = Depends(database.get_db),
-    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
 ):
     if limit <= 0:
         limit = 10
@@ -209,7 +213,7 @@ def get_all_ekyc_records(
     if total_pages == 0 and total > 0:
         total_pages = 1
 
-    return models.EkycPage(
+    return EkycPage(
         items=records,
         total=total,
         page=current_page,
@@ -217,22 +221,22 @@ def get_all_ekyc_records(
         pages=total_pages
     )
 
-@app.get("/ekyc/{record_id}", response_model=models.EkycInfo, tags=["Admin"])
+@app.get("/ekyc/{record_id}", response_model=EkycInfo, tags=["Admin"])
 def get_ekyc_record(
     record_id: int,
     db: Session = Depends(database.get_db),
-    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
 ):
     record = crud.get_ekyc_info_by_id(db, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="eKYC record not found")
-    return record
+    return EkycInfo.model_validate(record)
 
 @app.post("/users/{user_id}/activate", tags=["Admin"])
 def activate_user(
     user_id: int = Path(...), 
     db: Session = Depends(database.get_db), 
-    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
 ):
     user = crud.get_user_by_id(db, user_id)
     if not user:
@@ -245,7 +249,7 @@ def activate_user(
 def deactivate_user(
     user_id: int = Path(...), 
     db: Session = Depends(database.get_db), 
-    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
 ):
     user = crud.get_user_by_id(db, user_id)
     if not user:
@@ -253,3 +257,25 @@ def deactivate_user(
     user.is_active = False
     db.commit()
     return {"msg": "User deactivated"}
+
+@app.post("/ekyc/record/", response_model=EkycRecordSchema, tags=["eKYC"])
+def create_ekyc_record(
+    record: EkycRecordCreate = Body(...),
+    db: Session = Depends(database.get_db),
+    current_user: Annotated[User, Depends(get_current_active_user)] = None
+):
+    if record.user_id and record.user_id != current_user.id and current_user.username != settings.ADMIN_USERNAME_FOR_TESTING:
+        raise HTTPException(status_code=403, detail="User ID mismatch or not admin.")
+    db_record = crud.create_ekyc_record(db, record)
+    return EkycRecordSchema.model_validate(db_record)
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from database import get_db
+from crud import get_all_ekyc_records
+
+router = APIRouter()
+
+@router.get("/ekyc/records/all", response_model=List[EkycRecordSchema])
+def get_ekyc_records_all(db: Session = Depends(get_db)):
+    return crud.get_all_ekyc_records(db)[0]

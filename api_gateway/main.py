@@ -363,6 +363,21 @@ async def ekyc_full_flow(
             raise HTTPException(status_code=502, detail="Save eKYC info failed")
         saved_ekyc = save_resp.json()
 
+    # Save to /ekyc/record/ for admin/audit (new logic)
+    record_payload = {
+        "user_id": user_id,
+        "status": "completed",
+        "face_match_score": None,  # Optionally, add face match score if available in your flow
+        "extracted_info": ekyc_data,
+        "document_image_id": None,  # Optionally, store file id or url for CCCD image if available
+        "selfie_image_id": selfie_image_url  # Use URL as ID for now
+    }
+    record_url = f"{settings.USER_SERVICE_URL}/ekyc/record/"
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        record_resp = await client.post(record_url, json=record_payload, headers={"Authorization": auth_header})
+        if record_resp.status_code != 200:
+            logger.warning(f"Failed to save eKYC record for admin: {record_resp.text}")
+
     # 5. Trả về kết quả tổng hợp
     return {
         "ekyc_info": saved_ekyc,

@@ -216,7 +216,7 @@ async def get_ekyc_records(
     if limit < 1: limit = 1
     skip = (page - 1) * limit
     
-    target_url = f"{backend_settings.USER_SERVICE_URL}/ekyc/all"
+    target_url = f"{backend_settings.USER_SERVICE_URL}/ekyc/records/all"
     params = {"skip": skip, "limit": limit}
     if status:
         params["status"] = status
