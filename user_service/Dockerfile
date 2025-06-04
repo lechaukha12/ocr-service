@@ -14,6 +14,14 @@ COPY . /app/
 # Port mà ứng dụng FastAPI sẽ chạy bên trong container
 EXPOSE 8001
 
-# Lệnh để chạy ứng dụng khi container khởi động
-# Giả sử file main.py của bạn nằm ở thư mục gốc của service (trong /app/)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Install netcat for database connection checking
+RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
+
+# Add the startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh && \
+    # Make sure the script has Unix line endings
+    sed -i 's/\r$//' /app/start.sh
+
+# Run the startup script
+CMD ["/bin/bash", "/app/start.sh"]

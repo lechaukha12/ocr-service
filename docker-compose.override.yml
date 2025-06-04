@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres-compose
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ocradmin
+      POSTGRES_PASSWORD: ocrpassword
+      POSTGRES_DB: ocrdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ocr_network
+
+# ...existing services and networks/volumes...
+
+networks:
+  ocr_network:
+    driver: bridge
+
+volumes:
+  user_db_data:
+  postgres_data:

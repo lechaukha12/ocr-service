@@ -382,3 +382,17 @@ Các route tương ứng cho các chức năng mới (Quản lý eKYC, Thống k
    - Hướng dẫn sử dụng chi tiết
    - FAQ cho admin
    - Quy trình xử lý các tình huống phổ biến
+
+## Lỗi hiện tại (log service)
+
+### user-service
+- Lỗi Pydantic khi khởi động service:
+  - `A non-annotated attribute was detected: ekyc_records = <Relationship ...>. All model fields require a type annotation; if ekyc_records is not meant to be a field, you may be able to resolve this error by annotating it as a ClassVar or updating model_config['ignored_types'].`
+  - `Unable to generate pydantic-core schema for <class 'models.EkycRecord'>. Set arbitrary_types_allowed=True in the model_config to ignore this error or implement __get_pydantic_core_schema__ on your type to fully support it.`
+  - Tham khảo: https://errors.pydantic.dev/2.4/u/model-field-missing-annotation và https://errors.pydantic.dev/2.4/u/schema-for-unknown-type
+
+### postgres-service
+- Không có lỗi nghiêm trọng, database khởi động thành công và sẵn sàng nhận kết nối.
+
+---
+> Ghi chú: Cần fix các lỗi Pydantic liên quan đến annotation và cấu hình model_config trong models.py của user_service.
