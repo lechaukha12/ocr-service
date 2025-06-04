@@ -49,6 +49,7 @@ ID_KEYWORDS = [
     r"S[oôỔ0]\s*:", r"S[oôỔ0]\s*CCCD\s*:", r"S[oôỔ0]\s*CMND\s*:"
 ]
 NAME_KEYWORDS = [
+    r"Họ và tên / Full name", 
     r"Họ và tên", r"HỌ VÀ TÊN", r"Họ tên", r"HỌ TÊN", r"Full name", r"FULL NAME",
     r"H[oọỌ]\s*v[aàÀ]\s*t[eêÊ]n", r"H[oọỌ]\s*t[eêÊ]n",
     r"\[Zọ và tên ƒ Full name"
@@ -246,7 +247,7 @@ EXTRACTION_PATTERNS: Dict[str, List[Any]] = {
         (r"(?:\n|^)\s*([0-9\s]{{8}}[0-9])\s*(?:\n|$)", 1)
     ],
     "full_name": [
-        rf"{NAME_KWS_RGX}\s*[:ƒ]?\s*((?:[{NAME_CHARS_FOR_REGEX_SET}]|\n)+?)(?=\n\s*(?:{DOB_KWS_RGX}|{SEX_KWS_RGX}|{NAT_KWS_RGX})|\n\n|$)",
+        rf"(?:Họ và tên / Full name\s*:|HỌ VÀ TÊN / FULL NAME\s*:)\s*\n\s*([^\n]+)"
     ],
     "date_of_birth": [
         rf"{DOB_KWS_RGX}\s*[:!\s]?\s*([\d\s./-]+?)(?=\n\s*(?:{SEX_KWS_RGX}|{NAT_KWS_RGX})|$)"
