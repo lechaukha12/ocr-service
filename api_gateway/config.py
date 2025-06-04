@@ -5,7 +5,9 @@ class Settings(BaseSettings):
     STORAGE_SERVICE_URL: str = "http://storage-service-compose:8003"
     ADMIN_PORTAL_BACKEND_SERVICE_URL: str = "http://admin-portal-backend-compose:8002"
     GENERIC_OCR_SERVICE_URL: str = "http://generic-ocr-service-compose:8004"
-    EKYC_INFO_EXTRACTION_SERVICE_URL: str = "http://ekyc-info-extraction-service-compose:8005" # <-- THÊM DÒNG NÀY
+    EKYC_INFO_EXTRACTION_SERVICE_URL: str = "http://ekyc-info-extraction-service-compose:8005"
+    SECRET_KEY: str = "Abcd1234"
+    ALGORITHM: str = "HS256"
 
     class Config:
         env_file = ".env"

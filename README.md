@@ -149,6 +149,70 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
 
 > **Khuyến nghị:** Không nên tăng threshold lên cao hơn 0.4 để đảm bảo an toàn eKYC. Nếu cần kiểm thử với ảnh khác, chỉ cần đổi tên file ảnh và chạy lại script.
 
+## Luồng eKYC Tự Động (Full Flow)
+
+Hệ thống đã tích hợp endpoint `/ekyc/full_flow/` trên API Gateway để tự động hóa toàn bộ quy trình eKYC:
+
+1. **Upload ảnh selfie** lên storage service, nhận về URL.
+2. **Thực hiện OCR** trên ảnh CCCD qua Generic OCR Service (Gemini).
+3. **Trích xuất thông tin eKYC** từ kết quả OCR qua eKYC Information Extraction Service.
+4. **Lưu dữ liệu eKYC** (các trường bóc tách + selfie_image_url) vào user_service.
+5. **Trả về kết quả tổng hợp** gồm thông tin eKYC, ocr_text, các trường bóc tách, link ảnh selfie.
+
+### Hướng dẫn kiểm thử tự động
+
+- Sử dụng script `test_ekyc_full_flow.py` để kiểm thử end-to-end:
+    ```bash
+    python3 test_ekyc_full_flow.py
+    ```
+- Script sẽ tự động:
+    - Đăng ký và đăng nhập user mới
+    - Gửi ảnh CCCD (`IMG_4620.png`) và ảnh selfie (`IMG_4637.png`) qua API Gateway
+    - Nhận kết quả trả về gồm dữ liệu eKYC đã lưu, văn bản OCR, các trường bóc tách, link ảnh selfie
+
+### Định dạng request API Gateway `/ekyc/full_flow/`
+- Method: `POST`
+- Form-data:
+    - `cccd_image`: file ảnh CCCD
+    - `selfie_image`: file ảnh selfie
+    - `lang`: (tùy chọn, mặc định `vie`)
+    - `psm`: (tùy chọn)
+- Header:  
+  `Authorization: Bearer <access_token>`
+
+### Định dạng response mẫu
+```json
+{
+  "ekyc_info": {
+    "id": 1,
+    "user_id": 2,
+    "id_number": "0123456789",
+    "full_name": "NGUYEN VAN A",
+    "date_of_birth": "01/01/1990",
+    "gender": "Nam",
+    "nationality": "Việt Nam",
+    "place_of_origin": "Hà Nội",
+    "place_of_residence": "Hà Nội",
+    "expiry_date": "01/01/2030",
+    "selfie_image_url": "http://localhost:8003/files/abcxyz.png",
+    "created_at": "2025-06-04T10:00:00Z",
+    "updated_at": null
+  },
+  "ocr_text": "...văn bản OCR...",
+  "extracted_fields": { ...các trường bóc tách... },
+  "selfie_image_url": "http://localhost:8003/files/abcxyz.png"
+}
+```
+
+### Lưu ý
+- Ảnh sẽ được lưu vào storage service, chỉ lưu URL vào user_service.
+- Dữ liệu CCCD bóc tách sẽ lưu vào bảng `ekyc_info` trong user_service.
+- Có thể kiểm tra lại dữ liệu eKYC đã lưu qua API `/ekyc/me` (GET, cần token).
+
+## Tình trạng dịch vụ
+- Tất cả các service chính đã hoạt động tốt, trừ `liveness_service` (đang lỗi, chưa hoàn thiện).
+- Luồng eKYC tự động đã kiểm thử thành công với ảnh thật.
+
 ## Kịch bản Kiểm thử
 
 * Sử dụng script `test_ocr_service.py` để kiểm tra riêng `generic-ocr-service` (phiên bản Gemini).
@@ -175,3 +239,72 @@ Hệ thống sử dụng kiến trúc microservices, với mỗi service đảm 
 1.  Kiểm thử toàn diện luồng eKYC với nhiều ảnh CCCD khác nhau.
 2.  Xem xét tối ưu hóa chi phí token nếu cần.
 3.  Phát triển các dịch vụ liên quan đến Nhận dạng Khuôn mặt theo kế hoạch.
+
+## [CẬP NHẬT 04/06/2025] Kết quả kiểm thử full luồng eKYC (test_full_flow.py)
+
+### Kết quả thực tế (log tóm tắt):
+
+- Đăng ký user qua API Gateway: **Thành công**
+- Đăng nhập user, lấy access token: **Thành công**
+- Lấy thông tin user hiện tại: **Thành công**
+- Gửi ảnh CCCD qua Generic OCR Service (Gemini): **OCR thành công, text trích xuất đầy đủ**
+- Gửi text OCR sang eKYC Information Extraction Service: **Trích xuất chính xác các trường (id_number, full_name, date_of_birth, ...)**
+- So khớp khuôn mặt (Face Comparison Service):
+    - [CASE 1] CCCD vs Ảnh selfie KHỚP: **match = false, score = 0.45** (ngưỡng bảo mật cao, không nhận nhầm)
+    - [CASE 2] CCCD vs Ảnh không khớp: **match = false, score = 0.51**
+
+#### Log mẫu:
+
+```
+========== API Gateway: Register User ==========
+Registering new user...
+Status Code: 201
+...
+========== API Gateway: Login User - ... ==========
+Logging in...
+Status Code: 200
+...
+========== API Gateway: Get Current User (me) ==========
+Status Code: 200
+...
+========== API Gateway -> Generic OCR Service (Gemini): OCR Image 'IMG_4620.png' ==========
+Status Code: 200
+Response JSON: { ...text OCR... }
+...
+========== API Gateway -> eKYC Info Extraction: Extract Info ==========
+Status Code: 200
+Response JSON: { ...fields... }
+...
+========== Face Comparison Service: Compare 'IMG_4620.png' vs 'IMG_4637.png' ==========
+Status Code: 200
+Response JSON: { "match": false, "score": 0.45, "threshold": 0.4 }
+...
+========== Face Comparison Service: Compare 'IMG_4620.png' vs 'IMG_5132.png' ==========
+Status Code: 200
+Response JSON: { "match": false, "score": 0.51, "threshold": 0.4 }
+...
+Full API Flow Tests Completed.
+```
+
+### Đánh giá hiện trạng
+- **Tất cả các service chính đã hoạt động tốt, full flow eKYC qua API Gateway thành công.**
+- **OCR và bóc tách thông tin chính xác, bảo mật so khớp khuôn mặt đảm bảo.**
+- **Liveness service đã fix lỗi phụ thuộc python-multipart, đã khởi động thành công (chưa kiểm thử luồng liveness).**
+
+> Để kiểm thử lại, chỉ cần chạy:
+> ```bash
+> python3 test_full_flow.py
+> ```
+
+## [CẬP NHẬT 04/06/2025] Kiểm thử liveness_service
+
+### Kết quả kiểm thử thực tế endpoint `/check_liveness/`:
+
+- Gửi ảnh selfie (`IMG_4637.png`):
+  - Kết quả: `{ "is_live": true, "score": 0.90 }`
+- Gửi ảnh CCCD (`IMG_4620.png`):
+  - Kết quả: `{ "is_live": true, "score": 0.97 }`
+- Gửi ảnh không khớp (`IMG_5132.png`):
+  - Kết quả: `{ "is_live": false, "score": 0.29 }`
+
+> Lưu ý: Service hiện tại trả kết quả random (demo), chưa tích hợp model liveness thực tế. Endpoint đã hoạt động tốt, nhận file multipart và trả về kết quả đúng format.

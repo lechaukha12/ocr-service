@@ -52,7 +52,8 @@ async def upload_single_file(file: UploadFile = File(...)):
         "filename": unique_filename, # Trả về tên file đã lưu trên server
         "original_filename": original_filename,
         "content_type": file.content_type,
-        "file_path": str(file_location) # Đường dẫn tuyệt đối trên server (chủ yếu để debug)
+        "file_path": str(file_location), # Đường dẫn tuyệt đối trên server (chủ yếu để debug)
+        "url": f"{settings.BASE_URL}/files/{unique_filename}" # Thêm trường url trả về link truy cập file
     }
 
 @app.post("/upload/files/", response_model=List[dict], tags=["File Upload"])
@@ -81,7 +82,8 @@ async def upload_multiple_files(files: List[UploadFile] = File(...)):
                 "filename": unique_filename,
                 "original_filename": original_filename,
                 "content_type": file.content_type,
-                "file_path": str(file_location)
+                "file_path": str(file_location),
+                "url": f"{settings.BASE_URL}/files/{unique_filename}"
             })
         except Exception as e:
             if file_location.exists():
