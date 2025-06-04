@@ -279,3 +279,6 @@ router = APIRouter()
 @router.get("/ekyc/records/all", response_model=List[EkycRecordSchema])
 def get_ekyc_records_all(db: Session = Depends(get_db)):
     return crud.get_all_ekyc_records(db)[0]
+
+# Đảm bảo router được include vào app
+app.include_router(router)
