@@ -189,6 +189,24 @@ async def proxy_admin_get_users(request: Request, page: int = 1, limit: int = 10
 
     return await forward_request(request, target_url, "GET", params=params, headers_to_forward=headers_to_fwd)
 
+@app.post("/admin/users/{user_id}/activate", tags=["Admin Portal"])
+async def proxy_activate_user(request: Request, user_id: int):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/users/{user_id}/activate"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "POST", headers_to_forward=headers_to_fwd)
+
+@app.post("/admin/users/{user_id}/deactivate", tags=["Admin Portal"])
+async def proxy_deactivate_user(request: Request, user_id: int):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/users/{user_id}/deactivate"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "POST", headers_to_forward=headers_to_fwd)
+
 @app.post("/ocr/image/", tags=["OCR Service"])
 async def proxy_ocr_image(
     request: Request, # Added request here
@@ -352,3 +370,39 @@ async def ekyc_full_flow(
         "extracted_fields": ekyc_data,
         "selfie_image_url": selfie_image_url
     }
+
+@app.get("/admin/ekyc", tags=["Admin Portal"])
+async def proxy_get_ekyc_records(request: Request):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/ekyc"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
+
+@app.get("/admin/ekyc/{record_id}", tags=["Admin Portal"])
+async def proxy_get_ekyc_detail(request: Request, record_id: int):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/ekyc/{record_id}"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
+
+@app.get("/admin/statistics", tags=["Admin Portal"])
+async def proxy_admin_statistics(request: Request):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/statistics"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
+
+@app.get("/admin/notifications", tags=["Admin Portal"])
+async def proxy_admin_notifications(request: Request):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/notifications"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)

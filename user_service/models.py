@@ -90,3 +90,10 @@ class EkycInfo(EkycInfoBase):
 
     class Config:
         from_attributes = True
+
+class EkycPage(BaseModel):
+    items: list[EkycInfo]
+    total: int
+    page: int
+    limit: int
+    pages: int

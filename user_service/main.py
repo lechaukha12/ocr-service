@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Body
+from fastapi import FastAPI, Depends, HTTPException, status, Body, Path
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from typing import List, Annotated
+from typing import List, Annotated, Optional
 from sqlalchemy.orm import Session
 import math
 
@@ -180,3 +180,76 @@ def get_my_ekyc_info(
 ):
     records = crud.get_ekyc_info_by_user_id(db, current_user.id)
     return [EkycInfo.model_validate(r) for r in records]
+
+
+@app.get("/ekyc/all", response_model=models.EkycPage, tags=["Admin"])
+def get_all_ekyc_records(
+    skip: int = 0,
+    limit: int = 10,
+    status: Optional[str] = None,
+    date: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+):
+    if limit <= 0:
+        limit = 10
+    if skip < 0:
+        skip = 0
+
+    records, total = crud.get_ekyc_records(
+        db, 
+        skip=skip, 
+        limit=limit, 
+        status=status, 
+        date=date
+    )
+
+    current_page = (skip // limit) + 1
+    total_pages = math.ceil(total / limit) if limit > 0 else 0
+    if total_pages == 0 and total > 0:
+        total_pages = 1
+
+    return models.EkycPage(
+        items=records,
+        total=total,
+        page=current_page,
+        limit=limit,
+        pages=total_pages
+    )
+
+@app.get("/ekyc/{record_id}", response_model=models.EkycInfo, tags=["Admin"])
+def get_ekyc_record(
+    record_id: int,
+    db: Session = Depends(database.get_db),
+    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+):
+    record = crud.get_ekyc_info_by_id(db, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="eKYC record not found")
+    return record
+
+@app.post("/users/{user_id}/activate", tags=["Admin"])
+def activate_user(
+    user_id: int = Path(...), 
+    db: Session = Depends(database.get_db), 
+    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+):
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = True
+    db.commit()
+    return {"msg": "User activated"}
+
+@app.post("/users/{user_id}/deactivate", tags=["Admin"])
+def deactivate_user(
+    user_id: int = Path(...), 
+    db: Session = Depends(database.get_db), 
+    current_admin: Annotated[models.User, Depends(get_current_active_admin_user)] = None
+):
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = False
+    db.commit()
+    return {"msg": "User deactivated"}

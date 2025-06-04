@@ -65,6 +65,18 @@
             <a href="/dashboard/users" class="nav-link {% if request.url.path.startswith('/dashboard/users') %}active{% endif %}">
                 <i class="fas fa-users"></i>Quản lý Người dùng
             </a>
+            <a href="/dashboard/ekyc" class="nav-link {% if request.url.path.startswith('/dashboard/ekyc') %}active{% endif %}">
+                <i class="fas fa-id-card"></i>Quản lý eKYC
+            </a>
+            <a href="/dashboard/statistics" class="nav-link {% if request.url.path.startswith('/dashboard/statistics') %}active{% endif %}">
+                <i class="fas fa-chart-bar"></i>Thống kê
+            </a>
+            <a href="/dashboard/notifications" class="nav-link {% if request.url.path.startswith('/dashboard/notifications') %}active{% endif %}">
+                <i class="fas fa-bell"></i>Thông báo
+            </a>
+            <a href="/dashboard/docs" class="nav-link {% if request.url.path.startswith('/dashboard/docs') %}active{% endif %}">
+                <i class="fas fa-book"></i>Hướng dẫn
+            </a>
             {% if current_user and 'admin' in current_user.roles %}
             <a href="/admin/only" class="nav-link {% if request.url.path == '/admin/only' %}active{% endif %}">
                 <i class="fas fa-shield-alt"></i>Admin Area

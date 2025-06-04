@@ -1,0 +1,18 @@
+{% extends "dashboard_layout.html" %}
+
+{% block title %}{{ settings.APP_TITLE }} - {{ page_title }}{% endblock %}
+
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto">
+    <div class="bg-white shadow-md rounded-lg p-6">
+        <div class="text-center">
+            <p class="text-gray-700">{{ content }}</p>
+            <a href="/dashboard/users" class="mt-4 inline-block bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                Quay lại Quản lý Người dùng
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

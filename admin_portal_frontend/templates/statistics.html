@@ -1,0 +1,51 @@
+{% extends "dashboard_layout.html" %}
+{% block title %}{{ settings.APP_TITLE }} - Thống kê{% endblock %}
+{% block page_title %}Thống kê hệ thống{% endblock %}
+{% block content %}
+<div class="container mx-auto">
+    <div class="bg-white shadow-md rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-gray-700 mb-6">Tổng quan hệ thống</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-indigo-100 rounded-lg p-6 text-center">
+                <div class="text-3xl font-bold text-indigo-700">{{ stats.total_users }}</div>
+                <div class="text-gray-600 mt-2">Tổng số người dùng</div>
+            </div>
+            <div class="bg-green-100 rounded-lg p-6 text-center">
+                <div class="text-3xl font-bold text-green-700">{{ stats.total_ekyc }}</div>
+                <div class="text-gray-600 mt-2">Tổng số giao dịch eKYC</div>
+            </div>
+            <div class="bg-yellow-100 rounded-lg p-6 text-center">
+                <div class="text-3xl font-bold text-yellow-700">{{ stats.face_match_rate }}%</div>
+                <div class="text-gray-600 mt-2">Tỉ lệ match khuôn mặt</div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-700 mb-4">Biểu đồ thống kê (demo)</h3>
+            <canvas id="chart" height="120"></canvas>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('chart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: {{ stats.chart_labels|tojson }},
+        datasets: [{
+            label: 'Số lượng eKYC',
+            data: {{ stats.chart_data|tojson }},
+            backgroundColor: 'rgba(99, 102, 241, 0.5)',
+            borderColor: 'rgba(99, 102, 241, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+});
+</script>
+{% endblock %}

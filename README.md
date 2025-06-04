@@ -308,3 +308,77 @@ Full API Flow Tests Completed.
   - Kết quả: `{ "is_live": false, "score": 0.29 }`
 
 > Lưu ý: Service hiện tại trả kết quả random (demo), chưa tích hợp model liveness thực tế. Endpoint đã hoạt động tốt, nhận file multipart và trả về kết quả đúng format.
+
+## Cập nhật ngày 04/06/2025
+
+### Lỗi '404 Not Found' khi truy cập các chức năng mới
+
+**Nguyên nhân:**
+Các route tương ứng cho các chức năng mới (Quản lý eKYC, Thống kê, Thông báo, Tài liệu hướng dẫn) chưa được định nghĩa trong `admin_portal_frontend/main.py`.
+
+**Cách khắc phục:**
+Đã thêm các route placeholder trong `admin_portal_frontend/main.py` để xử lý các yêu cầu đến các đường dẫn này. Hiện tại, các route sẽ trả về thông báo rằng chức năng đang được phát triển.
+
+**Các route đã thêm:**
+- `/dashboard/ekyc`: Quản lý eKYC
+- `/dashboard/statistics`: Thống kê
+- `/dashboard/notifications`: Thông báo
+- `/dashboard/docs`: Hướng dẫn
+
+**Hành động tiếp theo:**
+- Phát triển nội dung và logic cho các chức năng này.
+- Kiểm tra và triển khai các tính năng liên quan.
+
+## Cập nhật Admin Portal (04/06/2025)
+
+### 1. Sửa lỗi "404 Not Found" trên Admin Portal
+
+#### 1.1. Lỗi các trang chức năng mới
+**Nguyên nhân:**
+- Các route mới (/dashboard/ekyc, /statistics, /notifications, /docs) chưa được định nghĩa trong admin portal frontend.
+
+**Cách khắc phục:**
+- Đã thêm route handlers trong `admin_portal_frontend/main.py`
+- Tạo template `message_page.html` để hiển thị thông báo chức năng đang phát triển
+- Đã định tuyến các request tới template phù hợp
+
+**Trạng thái hiện tại:**
+- Các trang hiển thị thông báo "đang phát triển"
+- UI/UX thống nhất với thiết kế chung
+- Chức năng sẽ được phát triển trong các bản cập nhật tiếp theo
+
+#### 1.2. Lỗi API kích hoạt/vô hiệu hóa user
+**Nguyên nhân:**
+- Thiếu các route xử lý trong chuỗi API Gateway -> Admin Backend -> User Service
+
+**Cách khắc phục:**
+- Thêm route `/admin/users/{user_id}/activate` và `/deactivate` trong API Gateway
+- Bổ sung xử lý trong Admin Portal Backend Service
+- Cập nhật User Service để hỗ trợ kích hoạt/vô hiệu hóa user
+
+**Trạng thái hiện tại:**
+- API hoạt động đầy đủ theo chuỗi:
+  - Frontend -> API Gateway -> Admin Backend -> User Service
+- Có xử lý lỗi và thông báo phù hợp
+- Giao diện người dùng đã cập nhật trạng thái real-time
+
+### 2. Kế hoạch phát triển tiếp theo
+1. **Quản lý eKYC:**
+   - Xem lịch sử eKYC của user
+   - Hiển thị thông tin chi tiết từng lần eKYC
+   - Thống kê tỷ lệ thành công/thất bại
+
+2. **Dashboard thống kê:**
+   - Số lượng user active/inactive
+   - Số lượng eKYC theo thời gian
+   - Biểu đồ phân tích dữ liệu
+
+3. **Hệ thống thông báo:**
+   - Thông báo realtime cho admin
+   - Lưu trữ lịch sử thông báo
+   - Phân loại theo mức độ ưu tiên
+
+4. **Tài liệu hướng dẫn:**
+   - Hướng dẫn sử dụng chi tiết
+   - FAQ cho admin
+   - Quy trình xử lý các tình huống phổ biến

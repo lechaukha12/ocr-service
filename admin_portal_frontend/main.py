@@ -247,3 +247,179 @@ async def admin_only_route(request: Request, current_user: UserForFrontend = Dep
         <a href='/dashboard/users'>Back to Users</a> <br/>
         <form action="/logout" method="post"><button type="submit">Logout</button></form>
     """)
+
+@app.post("/dashboard/users/activate/{user_id}")
+async def activate_user(request: Request, user_id: int, current_user: UserForFrontend = Depends(get_current_active_user)):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+    gateway_url = f"{settings.API_GATEWAY_URL}/admin/users/{user_id}/activate"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(gateway_url, headers=headers)
+            if resp.status_code == 200:
+                return RedirectResponse(url="/dashboard/users?msg=activated", status_code=status.HTTP_303_SEE_OTHER)
+            else:
+                return RedirectResponse(url=f"/dashboard/users?error=Không thể kích hoạt user: {resp.text}", status_code=status.HTTP_303_SEE_OTHER)
+        except Exception as e:
+            return RedirectResponse(url=f"/dashboard/users?error=Lỗi backend: {str(e)}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/dashboard/users/deactivate/{user_id}")
+async def deactivate_user(request: Request, user_id: int, current_user: UserForFrontend = Depends(get_current_active_user)):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+    gateway_url = f"{settings.API_GATEWAY_URL}/admin/users/{user_id}/deactivate"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(gateway_url, headers=headers)
+            if resp.status_code == 200:
+                return RedirectResponse(url="/dashboard/users?msg=deactivated", status_code=status.HTTP_303_SEE_OTHER)
+            else:
+                return RedirectResponse(url=f"/dashboard/users?error=Không thể vô hiệu hóa user: {resp.text}", status_code=status.HTTP_303_SEE_OTHER)
+        except Exception as e:
+            return RedirectResponse(url=f"/dashboard/users?error=Lỗi backend: {str(e)}", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/dashboard/ekyc", response_class=HTMLResponse)
+async def dashboard_ekyc_page(
+    request: Request,
+    current_user: UserForFrontend = Depends(get_current_active_user),
+    page: int = 1,
+    limit: int = 10,
+    status: Optional[str] = None,
+    date: Optional[str] = None
+):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+
+    params = {
+        "page": page,
+        "limit": limit
+    }
+    if status:
+        params["status"] = status
+    if date:
+        params["date"] = date
+
+    gateway_ekyc_url = f"{settings.API_GATEWAY_URL}/admin/ekyc"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(gateway_ekyc_url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            return templates.TemplateResponse(
+                "ekyc_list.html",
+                {
+                    "request": request,
+                    "settings": settings,
+                    "current_user": current_user,
+                    "records": data.get("items", []),
+                    "total_records": data.get("total", 0),
+                    "current_page": data.get("page", page),
+                    "limit": data.get("limit", limit),
+                    "total_pages": data.get("pages", 1),
+                    "error_message": None
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error fetching eKYC records: {str(e)}")
+            return templates.TemplateResponse(
+                "ekyc_list.html",
+                {
+                    "request": request,
+                    "settings": settings,
+                    "current_user": current_user,
+                    "records": [],
+                    "total_records": 0,
+                    "current_page": 1,
+                    "limit": limit,
+                    "total_pages": 0,
+                    "error_message": f"Không thể tải danh sách eKYC: {str(e)}"
+                }
+            )
+
+@app.get("/dashboard/ekyc/{record_id}", response_class=HTMLResponse)
+async def dashboard_ekyc_detail_page(
+    record_id: int,
+    request: Request,
+    current_user: UserForFrontend = Depends(get_current_active_user)
+):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+
+    gateway_ekyc_detail_url = f"{settings.API_GATEWAY_URL}/admin/ekyc/{record_id}"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(gateway_ekyc_detail_url, headers=headers)
+            response.raise_for_status()
+            record = response.json()
+
+            return templates.TemplateResponse(
+                "ekyc_detail.html",
+                {
+                    "request": request,
+                    "settings": settings,
+                    "current_user": current_user,
+                    "record": record,
+                    "error_message": None
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error fetching eKYC record detail: {str(e)}")
+            return templates.TemplateResponse(
+                "ekyc_detail.html",
+                {
+                    "request": request,
+                    "settings": settings,
+                    "current_user": current_user,
+                    "record": None,
+                    "error_message": f"Không thể tải thông tin eKYC: {str(e)}"
+                }
+            )
+
+@app.get("/dashboard/statistics", response_class=HTMLResponse)
+async def dashboard_statistics_page(request: Request, current_user: UserForFrontend = Depends(get_current_active_user)):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+    gateway_stats_url = f"{settings.API_GATEWAY_URL}/admin/statistics"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(gateway_stats_url, headers=headers)
+            resp.raise_for_status()
+            stats = resp.json()
+            return templates.TemplateResponse("statistics.html", {"request": request, "settings": settings, "current_user": current_user, "stats": stats})
+        except Exception as e:
+            logger.error(f"Error fetching statistics: {str(e)}")
+            return templates.TemplateResponse("statistics.html", {"request": request, "settings": settings, "current_user": current_user, "stats": {"total_users": 0, "total_ekyc": 0, "face_match_rate": 0, "chart_labels": [], "chart_data": []}})
+
+@app.get("/dashboard/notifications", response_class=HTMLResponse)
+async def dashboard_notifications_page(request: Request, current_user: UserForFrontend = Depends(get_current_active_user)):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+    gateway_notify_url = f"{settings.API_GATEWAY_URL}/admin/notifications"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(gateway_notify_url, headers=headers)
+            resp.raise_for_status()
+            notifications = resp.json().get("items", [])
+            return templates.TemplateResponse("notifications.html", {"request": request, "settings": settings, "current_user": current_user, "notifications": notifications})
+        except Exception as e:
+            logger.error(f"Error fetching notifications: {str(e)}")
+            return templates.TemplateResponse("notifications.html", {"request": request, "settings": settings, "current_user": current_user, "notifications": []})
+
+@app.get("/dashboard/docs", response_class=HTMLResponse)
+async def dashboard_docs_page(request: Request, current_user: UserForFrontend = Depends(get_current_active_user)):
+    return templates.TemplateResponse("docs.html", {"request": request, "settings": settings, "current_user": current_user})
