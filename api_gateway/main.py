@@ -297,12 +297,13 @@ async def ekyc_full_flow(
     2. Gửi ảnh CCCD qua OCR service lấy text.
     3. Gửi text qua eKYC extraction lấy dữ liệu bóc tách.
     4. Lưu dữ liệu eKYC (các trường + selfie_image_url) vào user_service.
-    5. Trả về kết quả cuối cùng.
+    5. Trả về kết quả tổng hợp.
     """
     # 1. Upload selfie image
     storage_url = f"{settings.STORAGE_SERVICE_URL}/upload/file/"
     selfie_bytes = await selfie_image.read()
     files = {"file": (selfie_image.filename, selfie_bytes, selfie_image.content_type)}
+    
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         storage_resp = await client.post(storage_url, files=files)
         if storage_resp.status_code != 200:
@@ -346,7 +347,8 @@ async def ekyc_full_flow(
     try:
         decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = decoded.get("user_id")
-    except Exception:
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to decode token: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
     if not user_id:
         raise HTTPException(status_code=401, detail="Token missing user_id")
@@ -357,26 +359,39 @@ async def ekyc_full_flow(
     ]}
     ekyc_payload["user_id"] = user_id
     ekyc_payload["selfie_image_url"] = selfie_image_url
+    logger.info(f"[DEBUG] user_service_url: {user_service_url}")
+    logger.info(f"[DEBUG] ekyc_payload: {ekyc_payload}")
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         save_resp = await client.post(user_service_url, json=ekyc_payload, headers={"Authorization": auth_header})
+        logger.info(f"[DEBUG] save_resp status: {save_resp.status_code}")
+        logger.info(f"[DEBUG] save_resp text: {save_resp.text}")
         if save_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Save eKYC info failed")
+            raise HTTPException(status_code=502, detail=f"Save eKYC info failed: {save_resp.text}")
         saved_ekyc = save_resp.json()
 
-    # Save to /ekyc/record/ for admin/audit (new logic)
+    # Save to /ekyc/record/ for admin/audit
     record_payload = {
         "user_id": user_id,
-        "status": "completed",
-        "face_match_score": None,  # Optionally, add face match score if available in your flow
+        "status": "PENDING",
         "extracted_info": ekyc_data,
-        "document_image_id": None,  # Optionally, store file id or url for CCCD image if available
-        "selfie_image_id": selfie_image_url  # Use URL as ID for now
+        "document_image_id": cccd_image.filename,
+        "selfie_image_id": selfie_image.filename,
+        "face_match_score": None  # Will be updated later by face matching service
     }
+    logger.info(f"[DEBUG] Gửi record_payload tới user_service: {record_payload}")
     record_url = f"{settings.USER_SERVICE_URL}/ekyc/record/"
+    logger.info(f"[DEBUG] record_url: {record_url}")
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        record_resp = await client.post(record_url, json=record_payload, headers={"Authorization": auth_header})
-        if record_resp.status_code != 200:
-            logger.warning(f"Failed to save eKYC record for admin: {record_resp.text}")
+        try:
+            record_resp = await client.post(record_url, json=record_payload, headers={"Authorization": auth_header})
+            logger.info(f"[DEBUG] record_resp status: {record_resp.status_code}")
+            logger.info(f"[DEBUG] record_resp text: {record_resp.text}")
+            if record_resp.status_code != 200:
+                logger.error(f"Failed to save eKYC record: {record_resp.text}")
+            else:
+                logger.info("eKYC record saved successfully")
+        except Exception as e:
+            logger.error(f"[ERROR] Exception when saving eKYC record: {e}")
 
     # 5. Trả về kết quả tổng hợp
     return {

@@ -208,7 +208,7 @@ async def get_ekyc_records(
     request: Request,
     page: int = 1,
     limit: int = 10,
-    status: Optional[str] = None,
+    ekyc_status: Optional[str] = None,  # Đổi tên biến tránh che import status
     date: Optional[date] = None,
     current_admin: Dict[str, Any] = Depends(get_current_admin_user)
 ):
@@ -218,8 +218,8 @@ async def get_ekyc_records(
     
     target_url = f"{backend_settings.USER_SERVICE_URL}/ekyc/records/all"
     params = {"skip": skip, "limit": limit}
-    if status:
-        params["status"] = status
+    if ekyc_status:
+        params["status"] = ekyc_status
     if date:
         params["date"] = date.isoformat()
 
@@ -231,8 +231,17 @@ async def get_ekyc_records(
         try:
             response = await client.get(target_url, params=params, headers=client_headers)
             response.raise_for_status()
-            ekyc_page_data = response.json()
-            validated_page = EkycRecordPage.model_validate(ekyc_page_data)
+            records = response.json()
+            # Tạo EkycRecordPage thủ công vì API trả về list, không phải page object
+            total = len(records)
+            total_pages = math.ceil(total / limit) if limit > 0 else 1
+            validated_page = EkycRecordPage(
+                items=records,
+                total=total,
+                page=page,
+                limit=limit,
+                pages=total_pages
+            )
             return validated_page
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
@@ -240,8 +249,9 @@ async def get_ekyc_records(
                 detail=f"Error fetching eKYC records: {exc.response.text}"
             )
         except Exception as e:
+            from fastapi import status as fastapi_status
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=fastapi_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error: {str(e)}"
             )
 

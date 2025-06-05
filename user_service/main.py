@@ -23,7 +23,6 @@ app = FastAPI(title="User Service")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 from models import UserDB
-# ...existing code...
 def create_access_token(user: UserDB, expires_delta: timedelta | None = None):
     to_encode = {"sub": user.username}
     if expires_delta:
@@ -186,7 +185,7 @@ def get_my_ekyc_info(
     return [EkycInfo.model_validate(r) for r in records]
 
 
-@app.get("/ekyc/all", response_model=EkycPage, tags=["Admin"])
+@app.get("/ekyc/all", response_model=EkycRecordPage, tags=["Admin"])
 def get_all_ekyc_records(
     skip: int = 0,
     limit: int = 10,
@@ -213,12 +212,12 @@ def get_all_ekyc_records(
     if total_pages == 0 and total > 0:
         total_pages = 1
 
-    return EkycPage(
-        items=records,
+    return EkycRecordPage(
+        items=[EkycRecordSchema.model_validate(record) for record in records],
         total=total,
         page=current_page,
         limit=limit,
-        pages=total_pages
+        size=limit
     )
 
 @app.get("/ekyc/{record_id}", response_model=EkycInfo, tags=["Admin"])
@@ -261,24 +260,64 @@ def deactivate_user(
 @app.post("/ekyc/record/", response_model=EkycRecordSchema, tags=["eKYC"])
 def create_ekyc_record(
     record: EkycRecordCreate = Body(...),
-    db: Session = Depends(database.get_db),
-    current_user: Annotated[User, Depends(get_current_active_user)] = None
+    db: Session = Depends(database.get_db)
 ):
-    if record.user_id and record.user_id != current_user.id and current_user.username != settings.ADMIN_USERNAME_FOR_TESTING:
-        raise HTTPException(status_code=403, detail="User ID mismatch or not admin.")
-    db_record = crud.create_ekyc_record(db, record)
-    return EkycRecordSchema.model_validate(db_record)
+    print("[DEBUG] Payload nhận được:", record.dict())
+    try:
+        db_record = crud.create_ekyc_record(db, record)
+        print("[DEBUG] Đã lưu record:", db_record)
+        return EkycRecordSchema.model_validate(db_record)
+    except Exception as e:
+        import traceback
+        print("[ERROR] create_ekyc_record exception:", e)
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create eKYC record: {e}")
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body, HTTPException, Path, status
 from sqlalchemy.orm import Session
+from typing import Annotated, List, Optional
+import math
 from database import get_db
 from crud import get_all_ekyc_records
+from models import UserDB as User
+from schemas import EkycRecordPage, EkycRecordSchema
 
 router = APIRouter()
 
-@router.get("/ekyc/records/all", response_model=List[EkycRecordSchema])
-def get_ekyc_records_all(db: Session = Depends(get_db)):
-    return crud.get_all_ekyc_records(db)[0]
+@router.get("/ekyc/records/all", response_model=EkycRecordPage, tags=["Admin"])
+def get_ekyc_records_all(
+    skip: int = 0,
+    limit: int = 10,
+    status: Optional[str] = None,
+    date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
+):
+    if limit <= 0:
+        limit = 10
+    if skip < 0:
+        skip = 0
+
+    records, total = crud.get_ekyc_records(
+        db, 
+        skip=skip, 
+        limit=limit, 
+        status=status, 
+        date=date
+    )
+
+    current_page = (skip // limit) + 1
+    total_pages = math.ceil(total / limit) if limit > 0 else 0
+    if total_pages == 0 and total > 0:
+        total_pages = 1
+
+    return EkycRecordPage(
+        items=[EkycRecordSchema.model_validate(record) for record in records],
+        total=total,
+        page=current_page,
+        limit=limit,
+        size=limit
+    )
 
 # Đảm bảo router được include vào app
 app.include_router(router)

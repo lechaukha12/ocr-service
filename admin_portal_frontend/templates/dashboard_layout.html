@@ -103,7 +103,11 @@
                 </h1>
             </div>
             <div class="flex items-center space-x-3">
+                {% if current_user %}
                 <span class="text-gray-600">Chào, {{ current_user.full_name or current_user.username }}!</span>
+                {% else %}
+                <span class="text-gray-600">Chào, Khách!</span>
+                {% endif %}
             </div>
         </header>
 

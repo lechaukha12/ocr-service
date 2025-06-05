@@ -46,13 +46,14 @@ def get_ekyc_info_by_user_id(db: Session, user_id: int) -> list[EkycInfoDB]:
     return db.query(EkycInfoDB).filter(EkycInfoDB.user_id == user_id).order_by(EkycInfoDB.created_at.desc()).all()
 
 def get_ekyc_records(db: Session, skip: int = 0, limit: int = 10, status: str = None, date: str = None):
-    query = db.query(EkycInfoDB)
+    from models import EkycRecord
+    query = db.query(EkycRecord)
     if status:
-        query = query.filter(EkycInfoDB.status == status)
+        query = query.filter(EkycRecord.status == status)
     if date:
-        query = query.filter(EkycInfoDB.created_at.cast(String).like(f"{date}%"))
+        query = query.filter(EkycRecord.created_at.cast(String).like(f"{date}%"))
     total = query.count()
-    records = query.order_by(EkycInfoDB.id.desc()).offset(skip).limit(limit).all()
+    records = query.order_by(EkycRecord.id.desc()).offset(skip).limit(limit).all()
     return records, total
 
 def create_ekyc_record(db: Session, record_data):
