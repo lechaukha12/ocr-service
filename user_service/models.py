@@ -38,9 +38,16 @@ class EkycRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    status = Column(String, index=True)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    status = Column(String, index=True)  # PENDING, MATCHED, NOT_MATCHED, ERROR
     face_match_score = Column(Float, nullable=True)
-    extracted_info = Column(JSON, nullable=True)
-    document_image_id = Column(String, nullable=True)
-    selfie_image_id = Column(String, nullable=True)
-    user: Mapped["UserDB"] = relationship("UserDB", back_populates="ekyc_records")
+    extracted_info = Column(JSON, nullable=True)  # All extracted fields from eKYC
+    document_image_id = Column(String, nullable=True)  # URL to CCCD image
+    selfie_image_id = Column(String, nullable=True)  # URL to selfie image
+    ocr_text = Column(String, nullable=True)  # Raw OCR text
+    verification_note = Column(String, nullable=True)  # Admin verification notes
+    verification_status = Column(String, nullable=True)  # APPROVED, REJECTED
+    verified_at = Column(DateTime, nullable=True)
+    verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user: Mapped["UserDB"] = relationship("UserDB", back_populates="ekyc_records", foreign_keys=[user_id])
+    verifier: Mapped["UserDB"] = relationship("UserDB", foreign_keys=[verified_by])

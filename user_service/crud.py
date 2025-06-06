@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import String, cast
+from typing import Optional, List, Tuple
 from models import UserDB, EkycInfoDB, EkycRecord
 from schemas import (
     UserBase, UserCreate, User, UserPage, Token, TokenData, UserLogin,
@@ -73,3 +75,6 @@ def get_all_ekyc_records(db: Session, skip: int = 0, limit: int = 10, status: st
     total = query.count()
     records = query.order_by(EkycRecord.id.desc()).offset(skip).limit(limit).all()
     return records, total
+
+def get_ekyc_record_by_id(db: Session, record_id: int) -> Optional[EkycRecord]:
+    return db.query(EkycRecord).filter(EkycRecord.id == record_id).first()

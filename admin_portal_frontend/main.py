@@ -423,3 +423,40 @@ async def dashboard_notifications_page(request: Request, current_user: UserForFr
 @app.get("/dashboard/docs", response_class=HTMLResponse)
 async def dashboard_docs_page(request: Request, current_user: UserForFrontend = Depends(get_current_active_user)):
     return templates.TemplateResponse("docs.html", {"request": request, "settings": settings, "current_user": current_user})
+
+@app.post("/dashboard/ekyc/{record_id}/verify", response_class=RedirectResponse)
+async def verify_ekyc_record(
+    record_id: int,
+    request: Request,
+    verification_status: str = Form(...),
+    verification_note: Optional[str] = Form(None),
+    current_user: UserForFrontend = Depends(get_current_active_user)
+):
+    admin_token = request.cookies.get("access_token_admin_portal")
+    if not admin_token:
+        return RedirectResponse(url="/login?error=Session expired", status_code=status.HTTP_303_SEE_OTHER)
+
+    gateway_verify_url = f"{settings.API_GATEWAY_URL}/admin/ekyc/{record_id}/verify"
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            verify_data = {
+                "verification_status": verification_status,
+                "verification_note": verification_note
+            }
+            response = await client.post(gateway_verify_url, json=verify_data, headers=headers)
+            response.raise_for_status()
+            
+            # Redirect back to the eKYC detail page with a success message
+            return RedirectResponse(
+                url=f"/dashboard/ekyc/{record_id}?message=Verification successful", 
+                status_code=status.HTTP_303_SEE_OTHER
+            )
+        except Exception as e:
+            logger.error(f"Error verifying eKYC record: {str(e)}")
+            # Redirect back to the eKYC detail page with an error message
+            return RedirectResponse(
+                url=f"/dashboard/ekyc/{record_id}?error=Verification failed: {str(e)}", 
+                status_code=status.HTTP_303_SEE_OTHER
+            )

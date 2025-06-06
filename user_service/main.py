@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Body, Path
+from fastapi import FastAPI, Depends, HTTPException, status, Body, Path, Form
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -319,5 +319,23 @@ def get_ekyc_records_all(
         size=limit
     )
 
-# Đảm bảo router được include vào app
-app.include_router(router)
+@app.post("/ekyc/{record_id}/verify", response_model=EkycRecordSchema, tags=["Admin"])
+def verify_ekyc_record(
+    record_id: int = Path(...),
+    verify_data: VerifyEkycRequest = Body(...),
+    db: Session = Depends(database.get_db),
+    current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
+):
+    record = crud.get_ekyc_record_by_id(db, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="eKYC record not found")
+
+    # Update verification fields
+    record.verification_status = verify_data.verification_status
+    record.verification_note = verify_data.verification_note
+    record.verified_by = verify_data.verified_by
+    record.verified_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(record)
+    return EkycRecordSchema.model_validate(record)

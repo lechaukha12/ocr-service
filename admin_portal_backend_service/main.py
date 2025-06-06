@@ -307,3 +307,45 @@ async def admin_notifications(current_admin: Dict[str, Any] = Depends(get_curren
             {"title": "Thông báo bảo trì", "content": "Hệ thống sẽ bảo trì lúc 23:00 hôm nay.", "created_at": datetime.now()}
         ]
     }
+
+class VerifyEkycRequest(BaseModel):
+    verification_status: str
+    verification_note: Optional[str] = None
+
+@app.post("/admin/ekyc/{record_id}/verify", response_model=EkycRecord, tags=["Admin - eKYC"])
+async def verify_ekyc_record(
+    request: Request,
+    record_id: int,
+    verify_data: VerifyEkycRequest,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_user)
+):
+    target_url = f"{backend_settings.USER_SERVICE_URL}/ekyc/{record_id}/verify"
+    client_headers = {
+        "Authorization": request.headers.get("Authorization")
+    }
+
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        try:
+            response = await client.post(
+                target_url, 
+                json={
+                    "verification_status": verify_data.verification_status,
+                    "verification_note": verify_data.verification_note,
+                    "verified_by": current_admin["user_id"]
+                }, 
+                headers=client_headers
+            )
+            response.raise_for_status()
+            record_data = response.json()
+            validated_record = EkycRecord.model_validate(record_data)
+            return validated_record
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=f"Error verifying eKYC record: {exc.response.text}"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {str(e)}"
+            )

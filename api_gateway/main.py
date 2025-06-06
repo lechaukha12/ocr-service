@@ -369,14 +369,44 @@ async def ekyc_full_flow(
             raise HTTPException(status_code=502, detail=f"Save eKYC info failed: {save_resp.text}")
         saved_ekyc = save_resp.json()
 
+    # Upload CCCD image to storage for admin review
+    storage_url = f"{settings.STORAGE_SERVICE_URL}/upload/file/"
+    cccd_bytes = await cccd_image.read()
+    files = {"file": (cccd_image.filename, cccd_bytes, cccd_image.content_type)}
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        cccd_storage_resp = await client.post(storage_url, files=files)
+        if cccd_storage_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Upload CCCD image failed")
+        cccd_result = cccd_storage_resp.json()
+        cccd_image_url = cccd_result.get("url") or cccd_result.get("file_url") or cccd_result.get("file_id")
+        if not cccd_image_url:
+            raise HTTPException(status_code=502, detail="Storage service did not return file url for CCCD")
+
+    # Face matching
+    face_matching_url = f"{settings.FACE_COMPARISON_SERVICE_URL}/compare/"
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        files = {
+            "image1": (selfie_image.filename, selfie_bytes, selfie_image.content_type),
+            "image2": (cccd_image.filename, cccd_bytes, cccd_image.content_type)
+        }
+        face_matching_resp = await client.post(face_matching_url, files=files)
+        if face_matching_resp.status_code != 200:
+            face_match_score = None
+            face_match_status = "ERROR"
+            logger.error(f"Face matching failed: {face_matching_resp.text}")
+        else:
+            face_match_result = face_matching_resp.json()
+            face_match_score = face_match_result.get("similarity_score")
+            face_match_status = "MATCHED" if face_match_score and face_match_score > 0.7 else "NOT_MATCHED"
+
     # Save to /ekyc/record/ for admin/audit
     record_payload = {
         "user_id": user_id,
-        "status": "PENDING",
+        "status": face_match_status,
         "extracted_info": ekyc_data,
-        "document_image_id": cccd_image.filename,
-        "selfie_image_id": selfie_image.filename,
-        "face_match_score": None  # Will be updated later by face matching service
+        "document_image_id": cccd_image_url,
+        "selfie_image_id": selfie_image_url,
+        "face_match_score": face_match_score
     }
     logger.info(f"[DEBUG] Gửi record_payload tới user_service: {record_payload}")
     record_url = f"{settings.USER_SERVICE_URL}/ekyc/record/"
@@ -436,3 +466,12 @@ async def proxy_admin_notifications(request: Request):
     if auth_header:
         headers_to_fwd["Authorization"] = auth_header
     return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
+
+@app.post("/admin/ekyc/{record_id}/verify", tags=["Admin Portal"])
+async def proxy_verify_ekyc_record(request: Request, record_id: int):
+    target_url = f"{settings.ADMIN_PORTAL_BACKEND_SERVICE_URL}/admin/ekyc/{record_id}/verify"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "POST", headers_to_forward=headers_to_fwd)

@@ -37,7 +37,8 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Người dùng</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CCCD/CMND</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Họ tên</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày sinh</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trạng thái</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Đối chiếu</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
                     </tr>
@@ -54,9 +55,41 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.id_number or 'N/A' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ record.full_name or 'N/A' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.date_of_birth or 'N/A' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if record.extracted_info %}
+                            <div class="text-sm text-gray-900">{{ record.extracted_info.id_number or 'N/A' }}</div>
+                            {% else %}
+                            <div class="text-sm text-gray-500">N/A</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if record.extracted_info %}
+                            <div class="text-sm text-gray-900">{{ record.extracted_info.full_name or 'N/A' }}</div>
+                            {% else %}
+                            <div class="text-sm text-gray-500">N/A</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                {% if record.status == 'PENDING' %}
+                                    bg-yellow-100 text-yellow-800
+                                {% elif record.status == 'MATCHED' %}
+                                    bg-green-100 text-green-800
+                                {% elif record.status == 'NOT_MATCHED' %}
+                                    bg-red-100 text-red-800
+                                {% else %}
+                                    bg-gray-100 text-gray-800
+                                {% endif %}">
+                                {{ record.status }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if record.face_match_score is not none %}
+                            <div class="text-sm text-gray-900">{{ "%.2f"|format(record.face_match_score*100) }}%</div>
+                            {% else %}
+                            <div class="text-sm text-gray-500">N/A</div>
+                            {% endif %}
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {{ record.created_at.strftime('%d/%m/%Y %H:%M') if record.created_at else 'N/A' }}
                         </td>

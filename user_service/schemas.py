@@ -77,11 +77,19 @@ class EkycRecordSchema(BaseModel):
     id: int
     user_id: Optional[int] = None
     created_at: Optional[datetime] = None
-    status: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    status: Optional[str] = None  # PENDING, MATCHED, NOT_MATCHED, ERROR
     face_match_score: Optional[float] = None
     extracted_info: Optional[dict] = None
-    document_image_id: Optional[str] = None
-    selfie_image_id: Optional[str] = None
+    document_image_id: Optional[str] = None  # URL to CCCD image
+    selfie_image_id: Optional[str] = None  # URL to selfie image
+    ocr_text: Optional[str] = None  # Raw OCR text
+    verification_note: Optional[str] = None  # Admin verification notes
+    verification_status: Optional[str] = None  # APPROVED, REJECTED
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[int] = None
+    user: Optional[User] = None
+    verifier: Optional[User] = None
 
     class Config:
         from_attributes = True
@@ -95,8 +103,23 @@ class EkycRecordPage(BaseModel):
 
 class EkycRecordCreate(BaseModel):
     user_id: Optional[int] = None
-    status: Optional[str] = None
+    status: Optional[str] = None  # PENDING, MATCHED, NOT_MATCHED, ERROR
     face_match_score: Optional[float] = None
     extracted_info: Optional[dict] = None
     document_image_id: Optional[str] = None
     selfie_image_id: Optional[str] = None
+    ocr_text: Optional[str] = None
+    verification_note: Optional[str] = None
+    verification_status: Optional[str] = None  # APPROVED, REJECTED
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[int] = None
+    selfie_image_id: Optional[str] = None
+
+class VerifyEkycRequest(BaseModel):
+    verification_status: str
+    verification_note: Optional[str] = None
+    verified_by: int
+
+    class Config:
+        from_attributes = True
+        arbitrary_types_allowed = True
