@@ -13,7 +13,7 @@ from config import settings
 from schemas import (
     UserBase, UserCreate, User, UserPage, Token, TokenData, UserLogin,
     EkycInfoBase, EkycInfoCreate, EkycInfo, EkycPage,
-    EkycRecordSchema, EkycRecordPage, EkycRecordCreate
+    EkycRecordSchema, EkycRecordPage, EkycRecordCreate, VerifyEkycRequest
 )
 
 database.create_db_tables()
@@ -68,7 +68,7 @@ async def get_current_active_user(
 ):
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
-    return User.model_validate(current_user)
+    return User.model_validate(current_user, from_attributes=True)
 
 
 async def get_current_active_admin_user(
@@ -87,7 +87,7 @@ async def get_current_active_admin_user(
     except Exception: 
         raise credentials_exception
     
-    return User.model_validate(current_user)
+    return User.model_validate(current_user, from_attributes=True)
 
 
 @app.post("/users/", response_model=User, status_code=status.HTTP_201_CREATED, tags=["Users"])
@@ -101,7 +101,8 @@ def create_new_user(user: UserCreate, db: Session = Depends(database.get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
         
     created_user_db = crud.create_user(db=db, user=user)
-    return User.model_validate(created_user_db)
+    # Chuyển đổi từ UserDB (SQLAlchemy) sang User (Pydantic) bằng cách dùng User.from_orm
+    return User.model_validate(created_user_db, from_attributes=True)
 
 
 @app.post("/token", response_model=Token, tags=["Authentication"])
@@ -127,7 +128,7 @@ async def login_for_access_token(
     access_token = create_access_token(
         user=user_db_obj, expires_delta=access_token_expires
     )
-    user_info_for_response = User.model_validate(user_db_obj)
+    user_info_for_response = User.model_validate(user_db_obj, from_attributes=True)
     return {"access_token": access_token, "token_type": "bearer", "user_info": user_info_for_response}
 
 @app.get("/users/me/", response_model=User, tags=["Users"])
@@ -157,7 +158,7 @@ def read_all_users(
 
 
     return UserPage(
-        items=[User.model_validate(user_db) for user_db in users_db_list],
+        items=[User.model_validate(user_db, from_attributes=True) for user_db in users_db_list],
         total=total_users,
         page=current_page,
         limit=limit,
@@ -174,7 +175,7 @@ def create_ekyc_info(
     if ekyc_info.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="User ID mismatch.")
     db_ekyc = crud.create_ekyc_info(db, ekyc_info)
-    return EkycInfo.model_validate(db_ekyc)
+    return EkycInfo.model_validate(db_ekyc, from_attributes=True)
 
 @app.get("/ekyc/me", response_model=List[EkycInfo], tags=["eKYC"])
 def get_my_ekyc_info(
@@ -182,7 +183,7 @@ def get_my_ekyc_info(
     current_user: Annotated[User, Depends(get_current_active_user)] = None
 ):
     records = crud.get_ekyc_info_by_user_id(db, current_user.id)
-    return [EkycInfo.model_validate(r) for r in records]
+    return [EkycInfo.model_validate(r, from_attributes=True) for r in records]
 
 
 @app.get("/ekyc/all", response_model=EkycRecordPage, tags=["Admin"])
@@ -213,23 +214,23 @@ def get_all_ekyc_records(
         total_pages = 1
 
     return EkycRecordPage(
-        items=[EkycRecordSchema.model_validate(record) for record in records],
+        items=[EkycRecordSchema.model_validate(record, from_attributes=True) for record in records],
         total=total,
         page=current_page,
         limit=limit,
         size=limit
     )
 
-@app.get("/ekyc/{record_id}", response_model=EkycInfo, tags=["Admin"])
+@app.get("/ekyc/{record_id}", response_model=EkycRecordSchema, tags=["Admin"])
 def get_ekyc_record(
     record_id: int,
     db: Session = Depends(database.get_db),
     current_admin: Annotated[User, Depends(get_current_active_admin_user)] = None
 ):
-    record = crud.get_ekyc_info_by_id(db, record_id)
+    record = crud.get_ekyc_record_by_id(db, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="eKYC record not found")
-    return EkycInfo.model_validate(record)
+    return EkycRecordSchema.model_validate(record, from_attributes=True)
 
 @app.post("/users/{user_id}/activate", tags=["Admin"])
 def activate_user(
@@ -266,7 +267,7 @@ def create_ekyc_record(
     try:
         db_record = crud.create_ekyc_record(db, record)
         print("[DEBUG] Đã lưu record:", db_record)
-        return EkycRecordSchema.model_validate(db_record)
+        return EkycRecordSchema.model_validate(db_record, from_attributes=True)
     except Exception as e:
         import traceback
         print("[ERROR] create_ekyc_record exception:", e)
@@ -279,7 +280,6 @@ from typing import Annotated, List, Optional
 import math
 from database import get_db
 from crud import get_all_ekyc_records
-from models import UserDB as User
 from schemas import EkycRecordPage, EkycRecordSchema
 
 router = APIRouter()
@@ -312,7 +312,7 @@ def get_ekyc_records_all(
         total_pages = 1
 
     return EkycRecordPage(
-        items=[EkycRecordSchema.model_validate(record) for record in records],
+        items=[EkycRecordSchema.model_validate(record, from_attributes=True) for record in records],
         total=total,
         page=current_page,
         limit=limit,
@@ -333,9 +333,13 @@ def verify_ekyc_record(
     # Update verification fields
     record.verification_status = verify_data.verification_status
     record.verification_note = verify_data.verification_note
-    record.verified_by = verify_data.verified_by
+    
+    # For auto-verification, the verified_by can be null
+    if verify_data.verified_by is not None:
+        record.verified_by = verify_data.verified_by
+    
     record.verified_at = datetime.utcnow()
 
     db.commit()
     db.refresh(record)
-    return EkycRecordSchema.model_validate(record)
+    return EkycRecordSchema.model_validate(record, from_attributes=True)

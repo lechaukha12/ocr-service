@@ -33,27 +33,33 @@ class UserPage(BaseModel):
 
 class EkycRecord(BaseModel):
     id: int
-    user_id: int
-    id_number: Optional[str] = None
-    full_name: Optional[str] = None
-    date_of_birth: Optional[str] = None
-    gender: Optional[str] = None
-    nationality: Optional[str] = None
-    place_of_origin: Optional[str] = None
-    place_of_residence: Optional[str] = None
-    expiry_date: Optional[str] = None
-    selfie_image_url: Optional[str] = None
-    id_card_image_url: Optional[str] = None
+    user_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    user: User
+    status: Optional[str] = None  # PENDING, MATCHED, NOT_MATCHED, ERROR
+    face_match_score: Optional[float] = None
+    extracted_info: Optional[dict] = None
+    document_image_id: Optional[str] = None  # URL to CCCD image
+    selfie_image_id: Optional[str] = None  # URL to selfie image
+    ocr_text: Optional[str] = None  # Raw OCR text
+    verification_note: Optional[str] = None  # Admin verification notes
+    verification_status: Optional[str] = None  # APPROVED, REJECTED
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[int] = None
+    user: Optional[User] = None
+    verifier: Optional[User] = None
+
+    class Config:
+        from_attributes = True
 
 class EkycRecordPage(BaseModel):
     items: List[EkycRecord]
     total: int
     page: int
-    limit: int
-    pages: int
+    size: int
+
+    class Config:
+        from_attributes = True
 
 
 async def get_current_admin_user(request: Request) -> Dict[str, Any]:
@@ -216,7 +222,7 @@ async def get_ekyc_records(
     if limit < 1: limit = 1
     skip = (page - 1) * limit
     
-    target_url = f"{backend_settings.USER_SERVICE_URL}/ekyc/records/all"
+    target_url = f"{backend_settings.USER_SERVICE_URL}/ekyc/all"
     params = {"skip": skip, "limit": limit}
     if ekyc_status:
         params["status"] = ekyc_status
@@ -231,18 +237,9 @@ async def get_ekyc_records(
         try:
             response = await client.get(target_url, params=params, headers=client_headers)
             response.raise_for_status()
-            records = response.json()
-            # Tạo EkycRecordPage thủ công vì API trả về list, không phải page object
-            total = len(records)
-            total_pages = math.ceil(total / limit) if limit > 0 else 1
-            validated_page = EkycRecordPage(
-                items=records,
-                total=total,
-                page=page,
-                limit=limit,
-                pages=total_pages
-            )
-            return validated_page
+            page_data = response.json()
+            # User service already returns properly formatted EkycRecordPage
+            return page_data
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
                 status_code=exc.response.status_code,

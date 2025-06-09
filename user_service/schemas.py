@@ -16,10 +16,7 @@ class User(UserBase):
     id: int
     is_active: bool = True
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
+    model_config = {"from_attributes": True, "arbitrary_types_allowed": True}
 
 class UserPage(BaseModel):
     items: List[User]
@@ -60,10 +57,7 @@ class EkycInfo(EkycInfoBase):
     user_id: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
+    model_config = {"from_attributes": True, "arbitrary_types_allowed": True}
 
 class EkycPage(BaseModel):
     items: List[EkycInfo]
@@ -90,16 +84,14 @@ class EkycRecordSchema(BaseModel):
     verified_by: Optional[int] = None
     user: Optional[User] = None
     verifier: Optional[User] = None
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
+    model_config = {"from_attributes": True, "arbitrary_types_allowed": True}
 
 class EkycRecordPage(BaseModel):
     items: List[EkycRecordSchema]
     total: int
     page: int
     size: int
+    model_config = {"arbitrary_types_allowed": True}
 
 class EkycRecordCreate(BaseModel):
     user_id: Optional[int] = None
@@ -118,8 +110,5 @@ class EkycRecordCreate(BaseModel):
 class VerifyEkycRequest(BaseModel):
     verification_status: str
     verification_note: Optional[str] = None
-    verified_by: int
-
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
+    verified_by: Optional[int] = None  # Optional to allow auto-verification
+    model_config = {"from_attributes": True, "arbitrary_types_allowed": True}

@@ -28,35 +28,35 @@
                 <div class="space-y-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">CCCD/CMND</div>
-                        <div class="text-sm font-medium">{{ record.id_number or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.id_number or record.id_number or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Họ tên</div>
-                        <div class="text-sm font-medium">{{ record.full_name or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.full_name or record.full_name or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Ngày sinh</div>
-                        <div class="text-sm font-medium">{{ record.date_of_birth or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.date_of_birth or record.date_of_birth or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Giới tính</div>
-                        <div class="text-sm font-medium">{{ record.gender or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.gender or record.gender or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Quốc tịch</div>
-                        <div class="text-sm font-medium">{{ record.nationality or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.nationality or record.nationality or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Quê quán</div>
-                        <div class="text-sm font-medium">{{ record.place_of_origin or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.place_of_origin or record.place_of_origin or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Nơi thường trú</div>
-                        <div class="text-sm font-medium">{{ record.place_of_residence or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.place_of_residence or record.place_of_residence or 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Ngày hết hạn</div>
-                        <div class="text-sm font-medium">{{ record.expiry_date or 'N/A' }}</div>
+                        <div class="text-sm font-medium">{{ record.extracted_info.expiry_date or record.expiry_date or 'N/A' }}</div>
                     </div>
                 </div>
             </div>
@@ -109,15 +109,25 @@
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Điểm đối chiếu khuôn mặt</div>
-                        <div class="text-sm font-medium">{{ "%.2f"|format(record.face_match_score*100) if record.face_match_score else 'N/A' }}%</div>
+                        <div class="text-sm font-medium">
+                            {% if record.face_match_score is not none %}
+                                {% set score_percent = record.face_match_score * 100 %}
+                                <span class="{{ 'text-green-600 font-bold' if score_percent > 60 else 'text-red-600' }}">
+                                    {{ "%.2f"|format(score_percent) }}%
+                                    {% if score_percent > 60 %}
+                                        <i class="fas fa-check-circle ml-1"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle ml-1"></i>
+                                    {% endif %}
+                                </span>
+                            {% else %}
+                                <span class="text-gray-500">0.00%</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Ghi chú xác minh</div>
                         <div class="text-sm font-medium">{{ record.verification_note or 'Chưa có ghi chú' }}</div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="text-sm text-gray-500">Người xác minh</div>
-                        <div class="text-sm font-medium">{{ record.verifier.username if record.verifier else 'N/A' }}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="text-sm text-gray-500">Thời gian xác minh</div>
@@ -125,29 +135,14 @@
                     </div>
                 </div>
 
-                <!-- Form xác minh -->
-                {% if not record.verification_status %}
-                <form method="POST" action="/dashboard/ekyc/{{ record.id }}/verify" class="mt-6">
-                    <div class="space-y-4">
-                        <div>
-                            <label for="verification_status" class="block text-sm font-medium text-gray-700">Trạng thái</label>
-                            <select id="verification_status" name="verification_status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                                <option value="APPROVED">Phê duyệt</option>
-                                <option value="REJECTED">Từ chối</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="verification_note" class="block text-sm font-medium text-gray-700">Ghi chú</label>
-                            <textarea id="verification_note" name="verification_note" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"></textarea>
-                        </div>
-                        <div>
-                            <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                                Xác minh
-                            </button>
-                        </div>
-                    </div>
-                </form>
-                {% endif %}
+                <!-- Form xác minh - đã loại bỏ -->
+                <div class="mt-6 text-sm text-gray-700">
+                    <p class="py-3 px-4 bg-blue-50 border border-blue-100 rounded-lg">
+                        <span class="font-bold"><i class="fas fa-info-circle mr-2"></i>Thông báo:</span> 
+                        Tất cả các hồ sơ eKYC được xác minh tự động dựa trên điểm đối chiếu khuôn mặt. 
+                        Ngưỡng chấp nhận: 60%.
+                    </p>
+                </div>
             </div>
 
             <!-- Ảnh CCCD và Selfie -->
@@ -157,13 +152,33 @@
                     <div>
                         <h4 class="text-sm font-medium text-gray-900 mb-2">Ảnh CCCD/CMND</h4>
                         <div class="aspect-w-16 aspect-h-9 rounded-lg overflow-hidden">
-                            <img src="{{ record.id_card_image_url or '/static/img/placeholder.png' }}" alt="CCCD/CMND" class="object-cover w-full h-full">
+                            {% set cccd_url = record.document_image_id %}
+                            {% if cccd_url %}
+                                {% if 'http' in cccd_url %}
+                                    {% set file_id = cccd_url.split('/')[-1] %}
+                                    <img src="http://localhost:8000/files/{{ file_id }}" alt="CCCD/CMND" class="object-cover w-full h-full">
+                                {% else %}
+                                    <img src="http://localhost:8000/files/{{ cccd_url }}" alt="CCCD/CMND" class="object-cover w-full h-full">
+                                {% endif %}
+                            {% else %}
+                                <img src="/static/img/placeholder.png" alt="CCCD/CMND" class="object-cover w-full h-full">
+                            {% endif %}
                         </div>
                     </div>
                     <div>
                         <h4 class="text-sm font-medium text-gray-900 mb-2">Ảnh chân dung (Selfie)</h4>
                         <div class="aspect-w-16 aspect-h-9 rounded-lg overflow-hidden">
-                            <img src="{{ record.selfie_image_url or '/static/img/placeholder.png' }}" alt="Selfie" class="object-cover w-full h-full">
+                            {% set selfie_url = record.selfie_image_id %}
+                            {% if selfie_url %}
+                                {% if 'http' in selfie_url %}
+                                    {% set file_id = selfie_url.split('/')[-1] %}
+                                    <img src="http://localhost:8000/files/{{ file_id }}" alt="Selfie" class="object-cover w-full h-full">
+                                {% else %}
+                                    <img src="http://localhost:8000/files/{{ selfie_url }}" alt="Selfie" class="object-cover w-full h-full">
+                                {% endif %}
+                            {% else %}
+                                <img src="/static/img/placeholder.png" alt="Selfie" class="object-cover w-full h-full">
+                            {% endif %}
                         </div>
                     </div>
                 </div>

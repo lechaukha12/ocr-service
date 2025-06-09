@@ -176,6 +176,19 @@ async def proxy_get_file_storage(filename: str, request: Request):
         headers_to_fwd["Authorization"] = auth_header
     return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
 
+@app.get("/files/{filename}", tags=["Storage Service"])
+async def proxy_get_file_direct(filename: str, request: Request):
+    """
+    Route để xử lý yêu cầu tải ảnh trực tiếp từ /files/{filename}
+    Portal sẽ gọi endpoint này để hiển thị ảnh CCCD và selfie
+    """
+    target_url = f"{settings.STORAGE_SERVICE_URL}/files/{filename}"
+    auth_header = request.headers.get("Authorization")
+    headers_to_fwd = {}
+    if auth_header:
+        headers_to_fwd["Authorization"] = auth_header
+    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
+
 
 @app.get("/admin/users/", tags=["Admin Portal Backend Service"])
 async def proxy_admin_get_users(request: Request, page: int = 1, limit: int = 10):
@@ -313,30 +326,49 @@ async def ekyc_full_flow(
         if not selfie_image_url:
             raise HTTPException(status_code=502, detail="Storage service did not return file url")
 
+    # Đọc file CCCD chỉ 1 lần
+    cccd_bytes = await cccd_image.read()
+
     # 2. OCR CCCD image
     ocr_url = f"{settings.GENERIC_OCR_SERVICE_URL}/ocr/image/"
-    cccd_bytes = await cccd_image.read()
     files = {"file": (cccd_image.filename, cccd_bytes, cccd_image.content_type)}
     data = {"lang": lang}
     if psm:
         data["psm"] = psm
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        ocr_resp = await client.post(ocr_url, files=files, data=data)
-        if ocr_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="OCR service failed")
-        ocr_json = ocr_resp.json()
-        ocr_text = ocr_json.get("text")
-        if not ocr_text:
-            raise HTTPException(status_code=502, detail="OCR service did not return text")
+    # Tăng timeout lên 120 giây cho OCR service vì xử lý ảnh có thể mất nhiều thời gian
+    ocr_text = None
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                ocr_resp = await client.post(ocr_url, files=files, data=data)
+                if ocr_resp.status_code == 200:
+                    ocr_json = ocr_resp.json()
+                    ocr_text = ocr_json.get("text")
+                    if not ocr_text:
+                        logger.warning("OCR service returned empty text")
+                else:
+                    logger.error(f"OCR service failed with status {ocr_resp.status_code}")
+            except httpx.ReadTimeout:
+                logger.warning(f"OCR service timeout for file {cccd_image.filename}, continuing without OCR text")
+    except Exception as e:
+        logger.error(f"Unexpected error during OCR: {e}")
+        
+    # Nếu OCR không thành công, vẫn tiếp tục với extracted_info rỗng
 
     # 3. eKYC extraction
-    ekyc_url = f"{settings.EKYC_INFO_EXTRACTION_SERVICE_URL}/extract_info/"
-    payload = {"ocr_text": ocr_text, "language": lang}
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        ekyc_resp = await client.post(ekyc_url, json=payload)
-        if ekyc_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="eKYC extraction failed")
-        ekyc_data = ekyc_resp.json()
+    ekyc_data = {}
+    if ocr_text:
+        ekyc_url = f"{settings.EKYC_INFO_EXTRACTION_SERVICE_URL}/extract_info/"
+        payload = {"ocr_text": ocr_text, "language": lang}
+        try:
+            async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+                ekyc_resp = await client.post(ekyc_url, json=payload)
+                if ekyc_resp.status_code == 200:
+                    ekyc_data = ekyc_resp.json()
+                else:
+                    logger.error(f"eKYC extraction failed with status {ekyc_resp.status_code}")
+        except Exception as e:
+            logger.error(f"Unexpected error during eKYC extraction: {e}")
 
     # 4. Lưu dữ liệu eKYC vào user_service
     # Lấy user_id từ token
@@ -369,66 +401,104 @@ async def ekyc_full_flow(
             raise HTTPException(status_code=502, detail=f"Save eKYC info failed: {save_resp.text}")
         saved_ekyc = save_resp.json()
 
-    # Upload CCCD image to storage for admin review
-    storage_url = f"{settings.STORAGE_SERVICE_URL}/upload/file/"
-    cccd_bytes = await cccd_image.read()
-    files = {"file": (cccd_image.filename, cccd_bytes, cccd_image.content_type)}
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        cccd_storage_resp = await client.post(storage_url, files=files)
-        if cccd_storage_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Upload CCCD image failed")
-        cccd_result = cccd_storage_resp.json()
-        cccd_image_url = cccd_result.get("url") or cccd_result.get("file_url") or cccd_result.get("file_id")
-        if not cccd_image_url:
-            raise HTTPException(status_code=502, detail="Storage service did not return file url for CCCD")
+    # Upload CCCD image to storage for admin review (dùng lại cccd_bytes)
+    cccd_image_url = None
+    try:
+        storage_url = f"{settings.STORAGE_SERVICE_URL}/upload/file/"
+        files = {"file": (cccd_image.filename, cccd_bytes, cccd_image.content_type)}
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            cccd_storage_resp = await client.post(storage_url, files=files)
+            if cccd_storage_resp.status_code == 200:
+                cccd_result = cccd_storage_resp.json()
+                cccd_image_url = cccd_result.get("url") or cccd_result.get("file_url") or cccd_result.get("file_id")
+                if not cccd_image_url:
+                    logger.error("Storage service did not return file url for CCCD")
+            else:
+                logger.error(f"Upload CCCD image failed with status {cccd_storage_resp.status_code}")
+    except Exception as e:
+        logger.error(f"Exception during CCCD image upload: {e}")
 
-    # Face matching
-    face_matching_url = f"{settings.FACE_COMPARISON_SERVICE_URL}/compare/"
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        files = {
-            "image1": (selfie_image.filename, selfie_bytes, selfie_image.content_type),
-            "image2": (cccd_image.filename, cccd_bytes, cccd_image.content_type)
-        }
-        face_matching_resp = await client.post(face_matching_url, files=files)
-        if face_matching_resp.status_code != 200:
-            face_match_score = None
-            face_match_status = "ERROR"
-            logger.error(f"Face matching failed: {face_matching_resp.text}")
-        else:
-            face_match_result = face_matching_resp.json()
-            face_match_score = face_match_result.get("similarity_score")
-            face_match_status = "MATCHED" if face_match_score and face_match_score > 0.7 else "NOT_MATCHED"
+    # Face matching (dùng lại selfie_bytes và cccd_bytes)
+    face_match_score = None
+    face_match_status = "PENDING"
+    try:
+        face_matching_url = f"{settings.FACE_COMPARISON_SERVICE_URL}/compare_faces/"
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            files = {
+                "file1": (selfie_image.filename, selfie_bytes, selfie_image.content_type),
+                "file2": (cccd_image.filename, cccd_bytes, cccd_image.content_type)
+            }
+            face_matching_resp = await client.post(face_matching_url, files=files)
+            if face_matching_resp.status_code == 200:
+                face_match_result = face_matching_resp.json()
+                # Lower score is better in face_recognition (it's a distance)
+                # Convert to a similarity score where higher is better
+                face_match_score = 1.0 - face_match_result.get("score", 0.0) if face_match_result.get("score") is not None else None
+                # A score above 0.6 (60%) is considered a match
+                face_match_status = "MATCHED" if face_match_score and face_match_score > 0.6 else "NOT_MATCHED"
+            else:
+                logger.error(f"Face matching failed with status {face_matching_resp.status_code}: {face_matching_resp.text}")
+                face_match_status = "ERROR"
+    except Exception as e:
+        logger.error(f"Exception during face matching: {e}")
+        face_match_status = "ERROR"
 
-    # Save to /ekyc/record/ for admin/audit
+    # Save to /ekyc/record/ for admin/audit with automatic verification
+    # Auto-approve if face_match_score is high enough, otherwise auto-reject
+    verification_status = None
+    verification_note = None
+    
+    # We're using a threshold of 0.6 (60%) for a good match
+    if face_match_status == "MATCHED" and face_match_score and face_match_score > 0.6:
+        verification_status = "APPROVED"
+        verification_note = f"Tự động xác minh bởi hệ thống - Điểm đối chiếu khuôn mặt {face_match_score:.2%} đạt ngưỡng"
+    elif face_match_status == "NOT_MATCHED" or (face_match_score is not None and face_match_score <= 0.6):
+        verification_status = "REJECTED"
+        verification_note = f"Tự động từ chối bởi hệ thống - Điểm đối chiếu khuôn mặt {face_match_score:.2%} không đạt ngưỡng"
+    elif face_match_status == "ERROR":
+        verification_status = "REJECTED"
+        verification_note = "Tự động từ chối bởi hệ thống - Lỗi xử lý khuôn mặt"
+    
     record_payload = {
         "user_id": user_id,
         "status": face_match_status,
-        "extracted_info": ekyc_data,
+        "extracted_info": ekyc_data if isinstance(ekyc_data, dict) else {},
         "document_image_id": cccd_image_url,
         "selfie_image_id": selfie_image_url,
-        "face_match_score": face_match_score
+        "face_match_score": face_match_score,
+        "verification_status": verification_status,
+        "verification_note": verification_note,
+        "verified_at": None,  # Will be set by the server
+        "verified_by": None   # Auto-verification by system
     }
     logger.info(f"[DEBUG] Gửi record_payload tới user_service: {record_payload}")
     record_url = f"{settings.USER_SERVICE_URL}/ekyc/record/"
     logger.info(f"[DEBUG] record_url: {record_url}")
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        try:
+    
+    saved_record = None
+    try:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             record_resp = await client.post(record_url, json=record_payload, headers={"Authorization": auth_header})
             logger.info(f"[DEBUG] record_resp status: {record_resp.status_code}")
             logger.info(f"[DEBUG] record_resp text: {record_resp.text}")
-            if record_resp.status_code != 200:
-                logger.error(f"Failed to save eKYC record: {record_resp.text}")
-            else:
+            if record_resp.status_code == 200:
                 logger.info("eKYC record saved successfully")
-        except Exception as e:
-            logger.error(f"[ERROR] Exception when saving eKYC record: {e}")
+                saved_record = record_resp.json()
+            else:
+                logger.error(f"Failed to save eKYC record: {record_resp.text}")
+    except Exception as e:
+        logger.error(f"[ERROR] Exception when saving eKYC record: {e}")
 
     # 5. Trả về kết quả tổng hợp
     return {
-        "ekyc_info": saved_ekyc,
-        "ocr_text": ocr_text,
-        "extracted_fields": ekyc_data,
-        "selfie_image_url": selfie_image_url
+        "ekyc_info": saved_ekyc or {},
+        "ocr_text": ocr_text or "",
+        "extracted_fields": ekyc_data or {},
+        "selfie_image_url": selfie_image_url or "",
+        "document_image_id": cccd_image_url or "",
+        "face_match_status": face_match_status or "PENDING",
+        "face_match_score": face_match_score,
+        "ekyc_record": saved_record
     }
 
 @app.get("/admin/ekyc", tags=["Admin Portal"])

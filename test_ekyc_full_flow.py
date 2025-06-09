@@ -32,21 +32,25 @@ def test_ekyc_full_flow():
     assert cccd_path and selfie_path, "Thiếu ảnh test"
 
     # 3. Gọi API full_flow
-    files = {
-        "cccd_image": (os.path.basename(cccd_path), open(cccd_path, "rb"), "image/jpeg"),
-        "selfie_image": (os.path.basename(selfie_path), open(selfie_path, "rb"), "image/jpeg")
-    }
-    data = {"lang": "vie"}
-    r = requests.post(f"{API_GATEWAY_URL}/ekyc/full_flow/", files=files, data=data, headers=headers)
-    print("\n===== eKYC Full Flow Response =====")
-    print("Status:", r.status_code)
+    # Đảm bảo file object luôn ở đầu khi truyền vào requests.post
+    cccd_file = open(cccd_path, "rb")
+    selfie_file = open(selfie_path, "rb")
     try:
-        print(r.json())
-    except Exception:
-        print(r.text)
-    for f in files.values():
-        if hasattr(f[1], 'close'):
-            f[1].close()
+        files = {
+            "cccd_image": (os.path.basename(cccd_path), cccd_file, "image/jpeg"),
+            "selfie_image": (os.path.basename(selfie_path), selfie_file, "image/jpeg")
+        }
+        data = {"lang": "vie"}
+        r = requests.post(f"{API_GATEWAY_URL}/ekyc/full_flow/", files=files, data=data, headers=headers)
+        print("\n===== eKYC Full Flow Response =====")
+        print("Status:", r.status_code)
+        try:
+            print(r.json())
+        except Exception:
+            print(r.text)
+    finally:
+        cccd_file.close()
+        selfie_file.close()
 
 if __name__ == "__main__":
     test_ekyc_full_flow()

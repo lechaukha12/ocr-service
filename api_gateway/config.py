@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     ADMIN_PORTAL_BACKEND_SERVICE_URL: str = "http://admin-portal-backend-compose:8002"
     GENERIC_OCR_SERVICE_URL: str = "http://generic-ocr-service-compose:8004"
     EKYC_INFO_EXTRACTION_SERVICE_URL: str = "http://ekyc-info-extraction-service-compose:8005"
+    FACE_COMPARISON_SERVICE_URL: str = "http://face-comparison-service-compose:8007"
     SECRET_KEY: str = "Abcd1234"
     ALGORITHM: str = "HS256"
 

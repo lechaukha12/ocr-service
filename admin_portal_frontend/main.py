@@ -16,6 +16,53 @@ from config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def parse_datetime_string(date_str: Optional[str]) -> Optional[datetime]:
+    """Parse datetime string from API response to datetime object"""
+    if not date_str:
+        return None
+    try:
+        # Try parsing with microseconds first
+        if '.' in date_str:
+            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        else:
+            # If no microseconds, parse without them
+            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+    except ValueError:
+        try:
+            # Fallback: try parsing with strptime
+            return datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%S.%f')
+        except ValueError:
+            logger.warning(f"Could not parse datetime string: {date_str}")
+            return None
+
+def process_ekyc_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Process eKYC records to convert datetime strings to datetime objects"""
+    processed_records = []
+    for record in records:
+        processed_record = record.copy()
+        
+        # Convert datetime fields
+        datetime_fields = ['created_at', 'updated_at', 'verified_at']
+        for field in datetime_fields:
+            if field in processed_record:
+                processed_record[field] = parse_datetime_string(processed_record[field])
+        
+        # Process user datetime fields if user exists
+        if 'user' in processed_record and processed_record['user']:
+            user = processed_record['user'].copy()
+            user['created_at'] = parse_datetime_string(user.get('created_at'))
+            processed_record['user'] = user
+            
+        # Process verifier datetime fields if verifier exists
+        if 'verifier' in processed_record and processed_record['verifier']:
+            verifier = processed_record['verifier'].copy()
+            verifier['created_at'] = parse_datetime_string(verifier.get('created_at'))
+            processed_record['verifier'] = verifier
+            
+        processed_records.append(processed_record)
+    
+    return processed_records
+
 app = FastAPI(title=settings.APP_TITLE)
 
 templates = Jinja2Templates(directory=settings.TEMPLATES_DIR_CONFIG)
@@ -313,13 +360,16 @@ async def dashboard_ekyc_page(
             response.raise_for_status()
             data = response.json()
 
+            # Process the records to convert datetime strings to datetime objects
+            processed_records = process_ekyc_records(data.get("items", []))
+
             return templates.TemplateResponse(
                 "ekyc_list.html",
                 {
                     "request": request,
                     "settings": settings,
                     "current_user": current_user,
-                    "records": data.get("items", []),
+                    "records": processed_records,
                     "total_records": data.get("total", 0),
                     "current_page": data.get("page", page),
                     "limit": data.get("limit", limit),
@@ -363,13 +413,17 @@ async def dashboard_ekyc_detail_page(
             response.raise_for_status()
             record = response.json()
 
+            # Process the single record to convert datetime strings to datetime objects
+            processed_records = process_ekyc_records([record])
+            processed_record = processed_records[0] if processed_records else record
+
             return templates.TemplateResponse(
                 "ekyc_detail.html",
                 {
                     "request": request,
                     "settings": settings,
                     "current_user": current_user,
-                    "record": record,
+                    "record": processed_record,
                     "error_message": None
                 }
             )
