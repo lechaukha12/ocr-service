@@ -88,6 +88,7 @@ services:
       - ADMIN_PORTAL_BACKEND_SERVICE_URL=http://admin-portal-backend-compose:8002
       - GENERIC_OCR_SERVICE_URL=http://generic-ocr-service-compose:8004
       - EKYC_INFO_EXTRACTION_SERVICE_URL=http://ekyc-info-extraction-service-compose:8005
+      - VLM_CORE_ENHANCED_SERVICE_URL=http://localhost:8010
     depends_on:
       - user-service
       - storage-service
