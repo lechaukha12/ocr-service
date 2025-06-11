@@ -88,12 +88,14 @@ services:
       - ADMIN_PORTAL_BACKEND_SERVICE_URL=http://admin-portal-backend-compose:8002
       - GENERIC_OCR_SERVICE_URL=http://generic-ocr-service-compose:8004
       - EKYC_INFO_EXTRACTION_SERVICE_URL=http://ekyc-info-extraction-service-compose:8005
+      - VLM_CORE_SERVICE_URL=http://vlm-core-compose:8010
     depends_on:
       - user-service
       - storage-service
       - generic-ocr-service
       - admin-portal-backend
       - ekyc-info-extraction-service
+      - vlm-core
     networks:
       - ocr_network
     restart: unless-stopped
@@ -153,6 +155,29 @@ services:
     networks:
       - ocr_network
     restart: unless-stopped
+    
+  vlm-core:
+    build:
+      context: ./vlm-core
+      dockerfile: Dockerfile
+    container_name: vlm-core-compose
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./vlm-core:/app
+      - vlm_model_cache:/root/.cache/huggingface
+    environment:
+      - USE_OLLAMA=false
+      - USE_LOCAL_MODEL=true
+      - MODEL_NAME=distilgpt2
+    networks:
+      - ocr_network
+    restart: unless-stopped
+    shm_size: 1gb
+    deploy:
+      resources:
+        limits:
+          memory: 4G
 
 networks:
   ocr_network:
@@ -160,3 +185,4 @@ networks:
 
 volumes:
   user_db_data:
+  vlm_model_cache:

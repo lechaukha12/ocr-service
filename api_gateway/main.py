@@ -536,3 +536,61 @@ async def proxy_verify_ekyc_record(request: Request, record_id: int):
     if auth_header:
         headers_to_fwd["Authorization"] = auth_header
     return await forward_request(request, target_url, "POST", headers_to_forward=headers_to_fwd)
+
+@app.post("/vlm/ocr/", tags=["VLM Core Service"])
+async def proxy_vlm_ocr_image(
+    request: Request,
+    image: UploadFile = File(...),
+    language: str = Form("vie"),
+):
+    """
+    OCR sử dụng VLM Core service (Gemma 3)
+    """
+    target_url = f"{settings.VLM_CORE_SERVICE_URL}/ocr"
+    files_data = [("image", (image.filename, await image.read(), image.content_type))]
+    form_data = {"language": language}
+    
+    return await forward_request(
+        request, 
+        target_url, 
+        "POST", 
+        form_data=form_data, 
+        files_data=files_data
+    )
+
+@app.post("/vlm/extract_info/", tags=["VLM Core Service"])
+async def proxy_vlm_extract_info(
+    request: Request,
+    image: UploadFile = File(...),
+    language: str = Form("vie"),
+):
+    """
+    Trích xuất thông tin từ ảnh CCCD/CMND sử dụng VLM Core service (Gemma 3)
+    """
+    target_url = f"{settings.VLM_CORE_SERVICE_URL}/extract_info"
+    files_data = [("image", (image.filename, await image.read(), image.content_type))]
+    form_data = {"language": language}
+    
+    return await forward_request(
+        request, 
+        target_url, 
+        "POST", 
+        form_data=form_data, 
+        files_data=files_data
+    )
+
+@app.get("/vlm/languages/", tags=["VLM Core Service"])
+async def proxy_vlm_languages(request: Request):
+    """
+    Lấy danh sách ngôn ngữ được VLM Core hỗ trợ
+    """
+    target_url = f"{settings.VLM_CORE_SERVICE_URL}/languages"
+    return await forward_request(request, target_url, "GET")
+
+@app.get("/vlm/health/", tags=["VLM Core Service"])
+async def proxy_vlm_health(request: Request):
+    """
+    Kiểm tra trạng thái hoạt động của VLM Core service
+    """
+    target_url = f"{settings.VLM_CORE_SERVICE_URL}/health"
+    return await forward_request(request, target_url, "GET")

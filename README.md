@@ -153,7 +153,8 @@ Hệ thống sử dụng **kiến trúc microservices** với Docker containers,
   - Load balancing
   - Authentication middleware
   - eKYC full flow endpoint
-- **Trạng thái**: 🟢 Hoạt động ổn định, đã thêm face comparison service URL
+  - VLM Core service endpoints
+- **Trạng thái**: 🟢 Hoạt động ổn định, đã thêm VLM Core service URL
 
 ### 4. **Storage Service** (`storage_service`) - ✅ HOẠT ĐỘNG HOÀN HẢO
 - **Chức năng**: Lưu trữ và quản lý files (ảnh CCCD, selfie)
@@ -233,18 +234,34 @@ Hệ thống sử dụng **kiến trúc microservices** với Docker containers,
 - **Port**: `5432`
 - **Trạng thái**: 🟢 Ổn định, đã tối ưu schema
 
+### 12. **VLM Core Service** (`vlm-core`) - ✅ MỚI
+- **Chức năng**: Dịch vụ OCR và eKYC sử dụng Gemma 3 trực tiếp trong container
+- **Công nghệ**: FastAPI, Gemma 3, Transformers, PyTorch, OpenCV
+- **Port**: `8010`
+- **Tính năng**:
+  - ✅ **OCR với Gemma 3**: Sử dụng mô hình Gemma 3 chạy trong container
+  - ✅ **Tối ưu tiếng Việt**: Hậu xử lý cho văn bản tiếng Việt
+  - ✅ **Trích xuất thông tin**: Trích xuất dữ liệu có cấu trúc từ CCCD/CMND
+  - ✅ **Tiết kiệm chi phí**: Thay thế Google Gemini bằng mô hình mã nguồn mở
+  - ✅ **Triển khai độc lập**: Không phụ thuộc vào Ollama hoặc API bên ngoài
+- **Endpoints**:
+  - `GET /health` - Kiểm tra trạng thái hoạt động
+  - `POST /ocr` - Nhận dạng văn bản từ ảnh
+  - `POST /extract_info` - Trích xuất thông tin từ CCCD/CMND
+  - `GET /languages` - Danh sách ngôn ngữ được hỗ trợ
+- **Trạng thái**: 🟢 **Hoạt động** - Mới triển khai để thay thế generic-ocr-service
+
 ## ⚙️ Hướng dẫn cài đặt
 
 ### 📋 Yêu cầu hệ thống:
 - **Docker** (phiên bản 20.0+)
 - **Docker Compose** (phiên bản 2.0+)  
-- **Google Gemini API Key** (để sử dụng OCR service)
 - **8GB RAM** (khuyến nghị)
-- **5GB disk space** (để lưu containers và data)
+- **7GB disk space** (để lưu containers, data và mô hình Gemma 3)
 
-### 🔑 Chuẩn bị API Keys:
-1. Truy cập [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Tạo API key mới cho Gemini
+### 🔧 Chuẩn bị môi trường:
+1. Cài đặt Docker và Docker Compose
+2. Clone repository và đảm bảo đủ dung lượng ổ cứng (~7GB)
 
 
 - **🔧 Engine mới**: Chuyển từ Google Gemini sang PaddleOCR
@@ -305,8 +322,6 @@ docker run -d -p 8010:8000 --name vlm-core-enhanced vlm-core-paddleocr-enhanced
 
 # Kiểm tra health
 curl http://localhost:8010/health
-```
-
 ```
 📊 TEST EXECUTION SUMMARY
    Total Tests: 11
@@ -581,12 +596,6 @@ python3 test_vlm_core_direct.py
 - 🔄 **Auto Verification**: Ngưỡng 60% confidence
 - 📊 **Success Rate**: 90.9% overall system reliability
 
-### 🎯 **Test Images Sẵn Có**
-- `IMG_4620.png` - CCCD tiếng Việt (test chính)
-- `IMG_4637.png` - CCCD khác
-- `IMG_5132.png` - Document test
-- `test_image.png` - Image thử nghiệm chung
-
 ## 📚 API Documentation
 
 
@@ -620,6 +629,55 @@ curl -X POST http://localhost:8010/ocr/url \
   -d '{"url": "https://example.com/image.jpg", "format": "json"}'
 ```
 
+#### 📄 **eKYC Processing:**
+```bash
+# Thực hiện eKYC (upload CCCD + selfie)
+curl -X POST "http://localhost:8000/ekyc/full_flow/" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -F "cccd_image=@path/to/cccd.jpg" \
+  -F "selfie_image=@path/to/selfie.jpg" \
+  -F "lang=vie"
+
+# Lịch sử eKYC của user
+curl -X GET "http://localhost:8000/ekyc/me" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+# Tạo eKYC record riêng lẻ
+curl -X POST "http://localhost:8000/ekyc/" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 123,
+    "id_number": "060098002136",
+    "full_name": "LÊ CHÂU KHA",
+    "date_of_birth": "12/04/1998",
+    "gender": "Nam",
+    "nationality": "Việt Nam",
+    "place_of_origin": "Châu Thành, Long An",
+    "place_of_residence": "Tổ 5, Phú Điền Hàm Hiệp...",
+    "expiry_date": "12/04/2038",
+    "selfie_image_url": "http://localhost:8003/files/xxx.png"
+  }'
+```
+
+#### 👤 **Authentication:**
+```bash
+# Đăng ký người dùng mới
+curl -X POST "http://localhost:8000/auth/users/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "testpass123",
+    "full_name": "Nguyen Van Test"
+  }'
+
+# Đăng nhập để lấy token
+curl -X POST "http://localhost:8000/auth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=testuser&password=testpass123"
+```
+
 ### 🌟 Endpoints chính hệ thống:
 
 #### 🔐 Authentication:
@@ -641,6 +699,12 @@ curl -X POST http://localhost:8010/ocr/url \
 #### 📁 File Management:
 - `POST /files/upload` - Upload file
 - `GET /files/{file_id}` - Download file
+
+#### 🆕 VLM Core Service:
+- `GET /vlm-core/health` - Kiểm tra sức khỏe VLM Core
+- `POST /vlm-core/ocr` - OCR với VLM Core
+- `POST /vlm-core/extract_info` - Trích xuất thông tin với VLM Core
+- `GET /vlm-core/languages` - Danh sách ngôn ngữ hỗ trợ bởi VLM Core
 
 ### 📖 Interactive Documentation:
 - **Swagger UI**: http://localhost:8000/docs
@@ -977,167 +1041,6 @@ Hiện tại hệ thống đã được cập nhật để thực hiện xác mi
 
 ---
 
-## 🚨 Troubleshooting
-
-### ❗ Các vấn đề thường gặp:
-
-#### 1. **Container không start được:**
-```bash
-# Kiểm tra logs
-docker-compose logs [service-name]
-
-# Restart specific service
-docker-compose restart [service-name]
-
-# Rebuild if needed
-docker-compose build [service-name]
-```
-
-#### 2. **Lỗi API Key:**
-```bash
-# Kiểm tra file .env
-cat .env
-
-# Restart service sau khi update .env
-docker-compose restart generic-ocr-service
-```
-
-#### 3. **Database connection issues:**
-```bash
-# Kiểm tra PostgreSQL
-docker-compose logs postgres
-
-# Reset database
-docker-compose down -v
-docker-compose up -d
-```
-
-#### 4. **Port conflicts:**
-```bash
-# Kiểm tra ports đang sử dụng
-netstat -tulpn | grep ":80"
-
-# Thay đổi port trong docker-compose.yml nếu cần
-```
-
-#### 5. **Memory issues:**
-```bash
-# Kiểm tra Docker memory usage
-docker stats
-
-# Tăng memory limit nếu cần
-docker-compose down
-# Edit docker-compose.yml to add memory limits
-docker-compose up -d
-```
-
-### 🔧 **Quick Fixes:**
-
-#### Service không response:
-```bash
-docker-compose restart [service-name]
-```
-
-#### Clear cache và rebuild:
-```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-#### Reset toàn bộ hệ thống:
-```bash
-docker-compose down -v --remove-orphans
-docker-compose build
-docker-compose up -d
-```
-
-### 📞 **Support:**
-- **Logs location**: `docker-compose logs`
-- **Config files**: Tất cả config trong các file `config.py`
-- **Database**: PostgreSQL data được persist trong Docker volumes
-- **Files**: Upload files được lưu trong `storage_service/uploads/`
-
----
-
-## 🎉 Kết luận
-
-### 🚀 **Hệ thống eKYC v2.0.0 - Hoàn toàn sẵn sàng Production**
-
-Hệ thống eKYC đã được nâng cấp hoàn chỉnh với những cải tiến vượt trội:
-
-#### ✅ **Tính năng hoàn chỉnh:**
-- **URL Processing**: Xử lý hình ảnh trực tiếp từ web
-- **Auto Verification**: Tự động xác minh dựa trên face similarity
-- **Admin Portal**: Giao diện quản trị đầy đủ tính năng
-- **Microservices**: 8 services hoạt động ổn định
-- **JWT Security**: Bảo mật với phân quyền admin/user
-
-#### 📊 **Chất lượng cao:**
-- **Success Rate**: 90.9% overall system reliability
-- **OCR Accuracy**: 90.4% cho văn bản tiếng Việt
-- **Processing Speed**: 1.5-2.1 giây/ảnh
-- **Test Coverage**: 11 test scenarios đạt 90.9%
-- **Error Handling**: 100% graceful error processing
-
-#### 🏗️ **Kiến trúc production:**
-- **Scalable**: Microservices dễ mở rộng
-- **Containerized**: Docker deployment hoàn chỉnh  
-- **Database**: PostgreSQL với data persistence
-- **Monitoring**: Health checks và logging đầy đủ
-- **Documentation**: API docs và user guides chi tiết
-
-### 🎯 **Sẵn sàng cho:**
-- ✅ **Production Deployment**: Triển khai thực tế
-- ✅ **Enterprise Usage**: Sử dụng doanh nghiệp
-- ✅ **High Volume**: Xử lý volume cao
-- ✅ **Integration**: Tích hợp với hệ thống khác
-- ✅ **Maintenance**: Bảo trì và nâng cấp
-
-### 🚀 **Next Steps:**
-1. **Production Deployment**: Deploy lên môi trường thực tế
-2. **Load Testing**: Test với traffic cao
-3. **Monitoring Setup**: Cài đặt monitoring tools
-4. **Backup Strategy**: Thiết lập backup tự động
-5. **CI/CD Pipeline**: Tự động hóa deployment
-
----
-
-### 📋 **Thông tin phiên bản:**
-- **Version**: 2.0.0 🆕
-- **Last Updated**: 10 tháng 6, 2025
-- **Status**: **Production Ready** ✅
-- **Architecture**: Microservices with Docker
-- **Database**: PostgreSQL 15
-- **OCR Engine**: PaddleOCR (Vietnamese Optimized)
-- **Test Coverage**: 90.9% success rate
-- **Documentation**: Complete API & User Guides
-
-### 👨‍💻 **Developed by:**
-- **Developer**: Le Chau Kha
-- **Email**: lechaukha@example.com
-- **Technology Stack**: 
-  - Backend: FastAPI, Python 3.9+
-  - Database: PostgreSQL 15
-  - OCR: PaddleOCR 
-  - Frontend: HTML/CSS/JavaScript
-  - Container: Docker & Docker Compose
-  - AI/ML: Face Recognition, Computer Vision
-
-### 📞 **Support & Contact:**
-- **Issues**: Tạo GitHub issue cho bug reports
-- **Features**: Đề xuất tính năng mới qua GitHub
-- **Documentation**: Xem API_DOCUMENTATION_v2.md
-- **Testing**: Chạy comprehensive_ocr_test.py
-- **Deployment**: Theo hướng dẫn trong README
-
----
-
-**🎉 Cảm ơn bạn đã sử dụng hệ thống eKYC! Chúc triển khai thành công! 🚀**
-- **AI Integration**: Google Gemini 2.0 Flash
-
----
-
 ## 🚨 Troubleshooting eKYC: Lỗi ảnh CCCD không hiển thị trên Admin Portal
 
 ### Hiện tượng:
@@ -1165,3 +1068,15 @@ Hệ thống eKYC đã được nâng cấp hoàn chỉnh với những cải ti
 - Thông tin cá nhân bóc tách từ CCCD cũng hiển thị đầy đủ.
 
 ---
+
+## Kiểm tra hoạt động của VLM Core Service:
+
+#### Kiểm tra hoạt động:
+
+```bash
+# Kiểm tra trạng thái service
+curl http://localhost:8010/health
+
+# Chạy test script
+python test_vlm_core.py IMG_4620.png
+```
