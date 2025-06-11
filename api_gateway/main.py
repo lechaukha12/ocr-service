@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, status, Response, UploadFil
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 import asyncio
+import json
 from typing import List, Optional
 import logging # Thêm logging
 import jwt
@@ -259,54 +260,6 @@ async def proxy_ocr_image(
         headers_to_forward=headers_to_fwd
     )
 
-
-@app.get("/ocr/languages/", tags=["OCR Service"])
-async def proxy_ocr_languages(request: Request):
-    target_url = f"{settings.GENERIC_OCR_SERVICE_URL}/ocr/languages/"
-    auth_header = request.headers.get("Authorization")
-    headers_to_fwd = {}
-    if auth_header:
-        headers_to_fwd["Authorization"] = auth_header
-    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
-
-@app.post("/vlm/ocr/", tags=["VLM OCR Service"])
-async def proxy_vlm_ocr(
-    request: Request,
-    file: UploadFile = File(...)
-):
-    """
-    Chuyển tiếp OCR request tới Vision Language Model (VLM) OCR service
-    """
-    target_url = f"{settings.VLM_CORE_SERVICE_URL}/ocr"
-    
-    file_content = await file.read()
-    files_for_httpx = [("image", (file.filename, file_content, file.content_type))]
-    
-    auth_header = request.headers.get("Authorization")
-    headers_to_fwd = {}
-    if auth_header:
-        headers_to_fwd["Authorization"] = auth_header
-
-    logger.info(f"Forwarding OCR request to VLM service: {settings.VLM_CORE_SERVICE_URL}")
-    return await forward_request(
-        request,
-        target_url,
-        "POST",
-        files_data=files_for_httpx,
-        headers_to_forward=headers_to_fwd
-    )
-
-@app.get("/vlm/health/", tags=["VLM OCR Service"])
-async def proxy_vlm_health(request: Request):
-    """
-    Kiểm tra sức khỏe của Vision Language Model (VLM) OCR service
-    """
-    target_url = f"{settings.VLM_CORE_SERVICE_URL}/health"
-    auth_header = request.headers.get("Authorization")
-    headers_to_fwd = {}
-    if auth_header:
-        headers_to_fwd["Authorization"] = auth_header
-    return await forward_request(request, target_url, "GET", headers_to_forward=headers_to_fwd)
 
 @app.post("/ekyc/extract_info/", tags=["eKYC Information Extraction Service"])
 async def proxy_ekyc_extract_info(request: Request):

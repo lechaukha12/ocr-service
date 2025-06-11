@@ -7,7 +7,6 @@ class Settings(BaseSettings):
     GENERIC_OCR_SERVICE_URL: str = "http://generic-ocr-service-compose:8004"
     EKYC_INFO_EXTRACTION_SERVICE_URL: str = "http://ekyc-info-extraction-service-compose:8005"
     FACE_COMPARISON_SERVICE_URL: str = "http://face-comparison-service-compose:8007"
-    VLM_CORE_SERVICE_URL: str = "http://vlm-core-compose:8009"
     SECRET_KEY: str = "Abcd1234"
     ALGORITHM: str = "HS256"
 

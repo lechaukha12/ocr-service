@@ -5,7 +5,6 @@
 - [Tính năng mới nâng cấp](#-tính-năng-mới-nâng-cấp)
 - [Kiến trúc hệ thống](#-kiến-trúc-hệ-thống) 
 - [Các microservices](#-các-microservices)
-- [VLM Core - Dịch vụ OCR nâng cấp](#-vlm-core---dịch-vụ-ocr-nâng-cấp)
 - [Hướng dẫn cài đặt](#-hướng-dẫn-cài-đặt)
 - [Sử dụng hệ thống](#-sử-dụng-hệ-thống)
 - [Admin Portal](#-admin-portal)
@@ -32,7 +31,6 @@ Hệ thống eKYC (electronic Know Your Customer) là một giải pháp hoàn c
 
 ## 🔥 Tính năng mới nâng cấp
 
-### 🚀 **VLM Core v2.0.0 - Dịch vụ OCR nâng cấp**
 - **PaddleOCR Engine**: Chuyển từ Google Gemini sang PaddleOCR với độ chính xác cao hơn
 - **Hỗ trợ tiếng Việt tối ưu**: Xử lý văn bản tiếng Việt với độ chính xác 90.4%
 - **Xử lý từ URL**: Nhận diện văn bản trực tiếp từ URL hình ảnh
@@ -117,7 +115,6 @@ Hệ thống sử dụng **kiến trúc microservices** với Docker containers,
 7. **Admin View**: Admin có thể xem kết quả xác minh qua Admin Portal
 ## 🔧 Các Microservices
 
-### 1. **VLM Core** (`vlm-core`) - 🚀 **MỚI NÂNG CẤP v2.0.0**
 - **Chức năng**: Dịch vụ OCR nâng cấp với PaddleOCR và xử lý URL
 - **Công nghệ**: FastAPI, PaddleOCR, httpx, PIL, numpy
 - **Port**: `8010` (container mới nâng cấp)
@@ -248,10 +245,7 @@ Hệ thống sử dụng **kiến trúc microservices** với Docker containers,
 ### 🔑 Chuẩn bị API Keys:
 1. Truy cập [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Tạo API key mới cho Gemini
-## 🚀 VLM Core - Dịch vụ OCR nâng cấp
 
-### 🎯 **Tổng quan VLM Core v2.0.0**
-VLM Core là dịch vụ OCR được nâng cấp hoàn toàn với những cải tiến vượt trội:
 
 - **🔧 Engine mới**: Chuyển từ Google Gemini sang PaddleOCR
 - **🇻🇳 Tối ưu tiếng Việt**: Độ chính xác 90.4% cho văn bản tiếng Việt
@@ -260,7 +254,6 @@ VLM Core là dịch vụ OCR được nâng cấp hoàn toàn với những cả
 - **⚡ Hiệu suất cao**: Xử lý 1.5-2.1 giây mỗi hình ảnh
 - **🛡️ Xử lý lỗi tối ưu**: Graceful error handling cho mọi trường hợp
 
-### 📋 **Endpoints VLM Core**
 
 #### 1. **Kiểm tra sức khỏe**
 ```http
@@ -300,10 +293,8 @@ Content-Type: application/json
 GET /languages
 ```
 
-### 🚀 **Chạy VLM Core độc lập**
 
 ```bash
-# Chuyển vào thư mục VLM Core
 cd vlm-core
 
 # Build Docker image
@@ -316,7 +307,6 @@ docker run -d -p 8010:8000 --name vlm-core-enhanced vlm-core-paddleocr-enhanced
 curl http://localhost:8010/health
 ```
 
-### 📊 **Kết quả kiểm thử VLM Core**
 ```
 📊 TEST EXECUTION SUMMARY
    Total Tests: 11
@@ -371,15 +361,12 @@ docker-compose up -d
 docker-compose ps
 ```
 
-#### **Phương án 2: Chạy VLM Core nâng cấp độc lập**
 ```bash
-# Chuyển vào thư mục VLM Core
 cd vlm-core
 
 # Build image nâng cấp
 docker build -t vlm-core-paddleocr-enhanced .
 
-# Chạy VLM Core nâng cấp
 docker run -d -p 8010:8000 --name vlm-core-enhanced vlm-core-paddleocr-enhanced
 
 # Kiểm tra health
@@ -534,9 +521,7 @@ Hệ thống sẽ trả về thông tin đầy đủ:
 
 ### 🔬 **Test Suite Toàn Diện**
 
-#### **1. VLM Core Testing - MỚI NÂNG CẤP**
 ```bash
-# Chạy comprehensive test cho VLM Core
 cd /Users/lechaukha12/Desktop/ocr-service
 python3 comprehensive_ocr_test.py
 ```
@@ -584,7 +569,6 @@ python3 test_vlm_core_direct.py
 
 ### 📊 **Kết quả Performance**
 
-#### **VLM Core v2.0.0:**
 - ⚡ **Thời gian xử lý**: 1.5-2.1 giây/ảnh
 - 🎯 **Độ chính xác**: 90.4% cho CCCD tiếng Việt
 - 📝 **Text blocks**: 16 segments được nhận diện
@@ -605,7 +589,6 @@ python3 test_vlm_core_direct.py
 
 ## 📚 API Documentation
 
-### 🌟 **Endpoints VLM Core v2.0.0 - MỚI**
 
 #### 🔍 **Health & Info:**
 ```bash
@@ -737,7 +720,6 @@ curl -X POST "http://localhost:8003/files/upload" \
 
 ## 🚀 Lịch sử nâng cấp
 
-### 🎯 **VLM Core v2.0.0 - Nâng cấp lớn (Tháng 6/2025)**
 
 #### 🔥 **Thay đổi chính:**
 - **🔄 Engine mới**: Chuyển từ Google Gemini sang PaddleOCR
@@ -791,7 +773,6 @@ Trước nâng cấp (Gemini):    Sau nâng cấp (PaddleOCR):
 
 ## 🔧 Troubleshooting
 
-### 🚨 **VLM Core Issues**
 
 #### **❌ Container không start được**
 ```bash
@@ -1086,7 +1067,6 @@ docker-compose up -d
 Hệ thống eKYC đã được nâng cấp hoàn chỉnh với những cải tiến vượt trội:
 
 #### ✅ **Tính năng hoàn chỉnh:**
-- **VLM Core v2.0.0**: OCR engine mới với PaddleOCR (90.4% accuracy)
 - **URL Processing**: Xử lý hình ảnh trực tiếp từ web
 - **Auto Verification**: Tự động xác minh dựa trên face similarity
 - **Admin Portal**: Giao diện quản trị đầy đủ tính năng
